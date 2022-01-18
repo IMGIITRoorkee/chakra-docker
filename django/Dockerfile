@@ -57,7 +57,7 @@ COPY ./supervisord.conf ./supervisord.conf
 COPY ./gunicorn_config.py ./gunicorn_config.py
 
 # Define environment variables
-ENV PYTHONPATH="/chakra:"
+ENV PYTHONPATH="/chakra-backend:"
 ENV HISTFILE="/.history/.bash_history"
 ENV IPYTHONDIR="/.history/.ipython/"
 
@@ -65,4 +65,4 @@ ENV IPYTHONDIR="/.history/.ipython/"
 RUN echo "PS1='docker@\$NAME:\w\$ '" >> /etc/bash.bashrc
 
 # Enter the chakra directory
-WORKDIR /chakra
+WORKDIR /chakra-backend

@@ -25,8 +25,7 @@ services:
       target: /var/lib/postgresql/data
       read_only: false
 
-    networks:
-    - network
+    network_mode: host
 
   chakra-backend: # Django = Gunicorn + Daphne
     # Use the Django image we made ourselves by running ./scripts/build/django.sh
@@ -45,8 +44,8 @@ services:
     volumes:
       # Mount the code  
     - type: bind
-      source: ../chakra-backend/
-      target: /chakra
+      source: ./codebase/chakra-backend/
+      target: /chakra-backend
       read_only: true
 
       # Mount 'static_files' as its namesake in the root of the container
@@ -90,8 +89,37 @@ services:
     - database
 
     # Connect to the custom default network
-    networks:
-    - network
+    # networks:
+    # - network
+    network_mode: host
+
+  chakra_frontend:
+    # Use the Django image we made ourselves by running ./scripts/build/django.sh
+    image: chakra-frontend:latest
+
+    # No matter what, if the container stops, start it again
+    restart: always
+
+    # Expose the ports 8000 and 8001 used by Gunicorn and Daphne to other containers
+    expose:
+    - "3000"
+
+    environment:
+      - PROXY=chakra.channeli.in
+
+    command: bash -c "yarn build && pm2 start yarn --name "nextjs" --interpreter bash -- start && pm2 monit"
+    # Mount the volumes on the Django container
+    volumes:
+      # Mount the code  
+    - type: bind
+      source: ./codebase/chakra-frontend/
+      target: /chakra-frontend
+      read_only: false
+    
+    depends_on:
+      - chakra-backend
+
+    network_mode: host
 
 volumes:
   # This volume contains the database and PostgreSQL configuration files

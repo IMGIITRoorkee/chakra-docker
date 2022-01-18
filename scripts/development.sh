@@ -8,4 +8,5 @@ docker-compose up -d database
 
 source codebase/chakra-core/.env
 cd codebase/chakra-core
+source chakra-core-env/bin/activate
 flask run

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+cd codebase/chakra-frontend
+yarn install
+cd ../../
+
 # Copy the yarn.lock file from the codebase into the React Docker folder
 cp codebase/chakra-frontend/package.json next/
 cp codebase/chakra-frontend/yarn.lock    next/

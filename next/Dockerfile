@@ -6,6 +6,8 @@ ARG IMAGETYPE
 
 WORKDIR /
 
+RUN yarn global add pm2
+
 COPY ./package.json package.json
 COPY ./yarn.lock yarn.lock
 
