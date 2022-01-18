@@ -1,0 +1,18 @@
+FROM node:stretch-slim
+
+LABEL maintainer="IMG, IIT Roorke <https://img.channeli.in>"
+
+ARG IMAGETYPE
+
+WORKDIR /
+
+COPY ./package.json package.json
+COPY ./yarn.lock yarn.lock
+
+RUN yarn install ${IMAGETYPE} 
+
+# Add some terminal jazz
+RUN echo "PS1='docker@\$NAME:\w\$ '" >> /etc/bash.bashrc
+
+# Enter the chakra directory
+WORKDIR /chakra-frontend

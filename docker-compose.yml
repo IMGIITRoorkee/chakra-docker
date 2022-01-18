@@ -1,0 +1,125 @@
+services:
+  database:
+    image: chakra-postgres:latest
+
+    restart: always
+    healthcheck:
+      test: ['CMD', 'checkhealth']
+      retries: 4
+
+      interval: 16m
+      timeout: 16s
+      start_period: 2m
+    
+    expose:
+    - 5432
+
+    user: postgres
+
+    env_file:
+    - postgres/database.env
+
+    volumes:
+    - type: volume
+      source: database
+      target: /var/lib/postgresql/data
+      read_only: false
+
+    networks:
+    - network
+
+  chakra-backend: # Django = Gunicorn + Daphne
+    # Use the Django image we made ourselves by running ./scripts/build/django.sh
+    image: chakra-backend:latest
+
+    # No matter what, if the container stops, start it again
+    restart: always
+
+    # Expose the ports 8000 and 8001 used by Gunicorn and Daphne to other containers
+    expose:
+    - "8000"
+    - "8001"
+
+    command: bash -c "source chakra_backend/.env && supervisord -c /supervisord.conf"
+    # Mount the volumes on the Django container
+    volumes:
+      # Mount the code  
+    - type: bind
+      source: ../chakra-backend/
+      target: /chakra
+      read_only: true
+
+      # Mount 'static_files' as its namesake in the root of the container
+    - type: volume
+      source: static_files
+      target: /static_files
+      read_only: false
+      
+      # Mount 'media_files' as its namesake in the root of the container
+    - type: volume
+      source: media_files
+      target: /media_files
+      read_only: false
+
+      # Mount 'personal_files' as its namesake in the root of the container
+    - type: volume
+      source: website
+      target: /website
+      read_only: false
+
+      # Mount 'supervisor.d' as its namesake in the root of the container
+    - type: volume
+      source: supervisor.d
+      target: /supervisor.d
+      read_only: false
+
+      # Mount 'web_server_logs' as its namesake in the root of the container
+    - type: volume
+      source: web_server_logs
+      target: /web_server_logs
+      read_only: false
+
+      # Mount '.history' as its namesake in the root of the container
+    - type: volume
+      source: .history
+      target: /.history
+      read_only: false
+
+    # The services that need to be ready before this one
+    depends_on:
+    - database
+
+    # Connect to the custom default network
+    networks:
+    - network
+
+volumes:
+  # This volume contains the database and PostgreSQL configuration files
+  database:
+  # This volume contains periodic dumps of the database for backup
+  database_backup:
+
+  # This volume contains web server logs
+  web_server_logs:
+
+  # This volume contains the static files
+  static_files:
+
+  # This volume contains the media files
+  media_files:
+  # This volume contains periodic dumps of the media files for backup
+  media_files_backup:
+
+  # This volume contains the personal media files
+  website:
+
+  # This volume contains the supervisor.d conf files
+  supervisor.d:
+
+  # This volume contains the history files
+  .history:
+
+# Networks specify how containers communicate with each other and the host
+networks:
+  # Create a network to override Docker's ambiguously named default
+  network:
