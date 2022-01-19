@@ -148,6 +148,6 @@ volumes:
   .history:
 
 # Networks specify how containers communicate with each other and the host
-networks:
-  # Create a network to override Docker's ambiguously named default
-  network:
+# networks:
+#   # Create a network to override Docker's ambiguously named default
+#   network:
