@@ -11,8 +11,6 @@ RUN yarn global add pm2
 COPY ./package.json package.json
 COPY ./yarn.lock yarn.lock
 
-RUN yarn install ${IMAGETYPE} 
-
 # Add some terminal jazz
 RUN echo "PS1='docker@\$NAME:\w\$ '" >> /etc/bash.bashrc
 

@@ -1,13 +1,4 @@
 #!/bin/bash
-
-cd codebase/chakra-frontend
-yarn install
-cd ../../
-
-# Copy the yarn.lock file from the codebase into the React Docker folder
-cp codebase/chakra-frontend/package.json next/
-cp codebase/chakra-frontend/yarn.lock    next/
-
 read -p "Add npm dependencies for developer tools? (y/N): " DEV_TOOLS
 if [ $DEV_TOOLS == 'Y' -o $DEV_TOOLS == 'y' ]; then
     # Set the build argument IMAGETYPE to blank
@@ -22,6 +13,14 @@ else
     # Assign a tag of prod-latest for usecases that mandate production
     TAG='prod-latest'
 fi
+
+cd codebase/chakra-frontend
+yarn install ${IMAGETYPE}
+cd ../../
+
+# Copy the yarn.lock file from the codebase into the React Docker folder
+cp codebase/chakra-frontend/package.json next/
+cp codebase/chakra-frontend/yarn.lock    next/
 
 # Enter the React Docker folder
 cd next/
