@@ -2,6 +2,9 @@ FROM python:3.8-slim-bullseye
 
 LABEL maintainer="IMG, IIT Roorkee <https://img.channeli.in>"
 
+# Create a non-root user
+RUN groupadd --system django && useradd --system --gid django django
+
 # Install dependencies
 RUN apt-get update \
     && apt-get install -y build-essential gcc libcairo2 libffi-dev \
@@ -27,14 +30,17 @@ RUN pip install -r requirements.txt
 
 # Create the media files volume as a directory
 RUN mkdir -p /media_files \
+    && chown -R django:django /media_files \
     && chmod -R o+r /media_files
 
 # Create the personal files volume as a directory
 RUN mkdir -p /website \
+    && chown -R django:django /website \
     && chmod -R o+r /website
 
 # Create the supervisor configuration files volume as a directory
 RUN mkdir -p /supervisor.d \
+    && chown -R django:django /supervisor.d \
     && chmod -R o+r /supervisor.d
 
 # Create the web server logs volume as a directory
@@ -42,10 +48,12 @@ RUN mkdir -p /web_server_logs/supervisord_logs  \
     && mkdir -p /web_server_logs/gunicorn_logs \
     && mkdir -p /web_server_logs/daphne_logs \
     && mkdir -p /web_server_logs/server_logs \
+    && chown -R django:django /web_server_logs \
     && chmod -R o+r /web_server_logs
 
 # Create the history volume as a directory
 RUN mkdir -p /.history \
+    && chown -R django:django /.history \
     && chmod -R o+r /.history
 
 # Change the directories into volumes

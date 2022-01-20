@@ -2,29 +2,15 @@
 
 # Let's start the docker container for DB
 
-docker network create -d bridge chakra-dev-network
-
 trap ctrl_c INT
 
 function ctrl_c() {
     echo "Stopping the dev server"
-    docker stop 5432
-    docker network rm chakra-dev-network
+    docker-compose down
     exit
 }
 
-docker run \
-    --tty \
-    --rm \
-    -d \
-    --publish 5432:5432/tcp \
-    --user postgres \
-    --network chakra-dev-network \
-    --volume database:/var/lib/postgresql/data \
-    --name=5432 \
-    --network-alias postgres5432 \
-    --env-file postgres/database.env \
-    chakra-postgres:latest
+docker-compose up -d database
 
 # Starting the flask server for chakra-core
 
