@@ -60,6 +60,12 @@ services:
       target: /media_files
       read_only: false
 
+      # Mount 'static_backend' as its namesake in the root of the container
+    - type: volume
+      source: static_backend
+      target: /static_backend
+      read_only: false
+
       # Mount 'personal_files' as its namesake in the root of the container
     - type: volume
       source: website
@@ -132,6 +138,9 @@ volumes:
 
   # This volume contains the static files
   static_files:
+
+  # This volume is for static files of backend
+  static_backend:
 
   # This volume contains the media files
   media_files:
