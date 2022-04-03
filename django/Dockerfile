@@ -34,6 +34,11 @@ RUN mkdir -p /media_files \
     && chown -R django:django /media_files \
     && chmod -R o+r /media_files
 
+# Create the static_backend volume as a directory
+RUN mkdir -p /media_files \
+    && chown -R django:django /static_backend \
+    && chmod -R o+r /static_backend
+
 # Create the personal files volume as a directory
 RUN mkdir -p /website \
     && chown -R django:django /website \
@@ -58,7 +63,7 @@ RUN mkdir -p /.history \
     && chmod -R o+r /.history
 
 # Change the directories into volumes
-VOLUME /media_files /website /web_server_logs /supervisor.d /.history
+VOLUME /media_files /website /web_server_logs /supervisor.d /.history /static_backend
 # Copy the supervisord.conf file over to the container
 COPY ./supervisord.conf ./supervisord.conf
 
