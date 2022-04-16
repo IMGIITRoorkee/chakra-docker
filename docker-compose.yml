@@ -126,6 +126,77 @@ services:
       - chakra-backend
 
     network_mode: host
+  
+  cache: # Memcached
+    # Use the Memcached image we made ourselves by running ./scripts/build/memcached.sh
+    image: chakra-memcached:latest
+
+    # Check the health of the container periodically
+    healthcheck:
+      test: ['CMD', 'netcat', '-z', '127.0.0.1', '11211']
+      retries: 4
+
+      interval: 16m
+      timeout: 16s
+      start_period: 2m
+
+    # No matter what, if the container stops, start it again
+    restart: always
+
+    # Expose the port 5672 used by RabbitMQ to other containers
+    expose:
+    - "11211"
+
+    # Run the container as the non-root user
+    user: memcache
+
+    # Connect to the custom default network
+    networks:
+    - network
+
+  message-broker: # RabbitMQ
+    # Use the RabbitMQ image we made ourselves by running ./scripts/build/rabbitmq.sh
+    image: chakra-rabbitmq:latest
+
+    # Check the health of the container periodically
+    healthcheck:
+      test: ['CMD', 'checkhealth']
+      retries: 4
+
+      interval: 16m
+      timeout: 16s
+      start_period: 2m
+
+    # No matter what, if the container stops, start it again
+    restart: always
+
+    # Expose the port 5672 used by RabbitMQ to other containers
+    expose:
+    - "5672"
+
+    # Expose the ports 15672 to the host at 5672 and 15672
+    ports:
+    - "15672:15672"
+
+    # Run the container as the non-root user
+    user: rabbitmq
+    
+    # Set the environment variables
+    env_file:
+    - rabbitmq/message_broker.env
+
+    # Mount the volumes on the message broker container
+    volumes:
+      # Mount 'rabbitmq-data' as the place where RabbitMQ stores its data
+    - type: volume
+      source: rabbitmq_data
+      target: /var/lib/rabbitmq
+      read_only: false
+
+    # Connect to the custom default network
+    networks:
+    - network
+
 
 volumes:
   # This volume contains the database and PostgreSQL configuration files
