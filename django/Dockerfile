@@ -35,7 +35,7 @@ RUN mkdir -p /media_files \
     && chmod -R o+r /media_files
 
 # Create the static_backend volume as a directory
-RUN mkdir -p /media_files \
+RUN mkdir -p /static_backend \
     && chown -R django:django /static_backend \
     && chmod -R o+r /static_backend
 

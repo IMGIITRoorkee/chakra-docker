@@ -67,8 +67,8 @@ services:
       read_only: false
 
       # Mount 'personal_files' as its namesake in the root of the container
-    - type: volume
-      source: website
+    - type: bind
+      source: ./codebase/chakra-backend/website/
       target: /website
       read_only: false
 
