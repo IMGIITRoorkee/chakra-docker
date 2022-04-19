@@ -10,7 +10,7 @@ services:
       interval: 16m
       timeout: 16s
       start_period: 2m
-    
+
     expose:
     - 5432
 
@@ -42,21 +42,21 @@ services:
     command: bash -c "source chakra_backend/.env && supervisord -c /supervisord.conf"
     # Mount the volumes on the Django container
     volumes:
-      # Mount the code  
+      # Mount the code
     - type: bind
       source: ./codebase/chakra-backend/
       target: /chakra-backend
       read_only: true
 
       # Mount 'static_files' as its namesake in the root of the container
-    - type: volume
-      source: static_files
+    - type: bind
+      source: ./codebase/chakra-backend/static_files
       target: /static_files
       read_only: false
-      
+
       # Mount 'media_files' as its namesake in the root of the container
-    - type: volume
-      source: media_files
+    - type: bind
+      source: ./codebase/chakra-backend/media_files
       target: /media_files
       read_only: false
 
@@ -68,25 +68,25 @@ services:
 
       # Mount 'personal_files' as its namesake in the root of the container
     - type: bind
-      source: ./codebase/chakra-backend/website/
+      source: ./codebase/chakra-backend/website
       target: /website
       read_only: false
 
       # Mount 'supervisor.d' as its namesake in the root of the container
-    - type: volume
-      source: supervisor.d
+    - type: bind
+      source: ./codebase/chakra-backend/supervisor.d
       target: /supervisor.d
       read_only: false
 
       # Mount 'web_server_logs' as its namesake in the root of the container
-    - type: volume
-      source: web_server_logs
+    - type: bind
+      source: ./codebase/chakra-backend/web_server_logs
       target: /web_server_logs
       read_only: false
 
       # Mount '.history' as its namesake in the root of the container
-    - type: volume
-      source: .history
+    - type: bind
+      source: ./codebase/chakra-backend/history_dir
       target: /.history
       read_only: false
 
@@ -116,17 +116,17 @@ services:
     command: bash -c "yarn build && pm2 start yarn --name "nextjs" --interpreter bash -- start && pm2 monit"
     # Mount the volumes on the Django container
     volumes:
-      # Mount the code  
+      # Mount the code
     - type: bind
       source: ./codebase/chakra-frontend/
       target: /chakra-frontend
       read_only: false
-    
+
     depends_on:
       - chakra-backend
 
     network_mode: host
-  
+
   cache: # Memcached
     # Use the Memcached image we made ourselves by running ./scripts/build/memcached.sh
     image: chakra-memcached:latest
@@ -151,8 +151,7 @@ services:
     user: memcache
 
     # Connect to the custom default network
-    networks:
-    - network
+    network_mode: host
 
   message-broker: # RabbitMQ
     # Use the RabbitMQ image we made ourselves by running ./scripts/build/rabbitmq.sh
@@ -174,13 +173,9 @@ services:
     expose:
     - "5672"
 
-    # Expose the ports 15672 to the host at 5672 and 15672
-    ports:
-    - "15672:15672"
-
     # Run the container as the non-root user
     user: rabbitmq
-    
+
     # Set the environment variables
     env_file:
     - rabbitmq/message_broker.env
@@ -194,8 +189,7 @@ services:
       read_only: false
 
     # Connect to the custom default network
-    networks:
-    - network
+    network_mode: host
 
 
 volumes:
@@ -226,6 +220,9 @@ volumes:
 
   # This volume contains the history files
   .history:
+
+  # RabbitMQ needs a volume at /var/lib/rabbitmq/
+  rabbitmq_data:
 
 # Networks specify how containers communicate with each other and the host
 # networks:
