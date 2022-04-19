@@ -9,7 +9,7 @@ RUN groupadd --system django && useradd --system --gid django django
 RUN apt-get update \
     && apt-get install -y build-essential gcc libcairo2 libffi-dev \
         libgdk-pixbuf2.0-0 libpango-1.0-0 libpangocairo-1.0-0 poppler-utils \
-        python3-cffi shared-mime-info \ 
+        python3-cffi shared-mime-info \
         libpq-dev python3-dev \
         file\
     && rm -rf /var/lib/apt/lists/*
