@@ -30,6 +30,7 @@ TIMESTAMP=$(date +"%s")
 
 docker build \
     --build-arg IMAGETYPE=${IMAGETYPE} \
+    --no-cache \
     --tag chakra-frontend:${TIMESTAMP} \
     --tag chakra-frontend:${TAG} \
     --tag chakra-frontend:latest \

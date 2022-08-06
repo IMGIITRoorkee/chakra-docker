@@ -12,6 +12,7 @@ TIMESTAMP=$(date +"%s")
 docker build \
     --tag chakra-backend:${TIMESTAMP} \
     --tag chakra-backend:latest \
+    --no-cache \
     .
 
 # Remove the requirement files after they have served their purpose
