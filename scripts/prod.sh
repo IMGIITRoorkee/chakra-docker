@@ -2,7 +2,7 @@
 
 # This script runs the chakra core server
 
-docker-compose up -d
+CURRENT_UID=$(id -u):$(id -g) docker-compose up -d
 
 trap handle_interrupt INT
 

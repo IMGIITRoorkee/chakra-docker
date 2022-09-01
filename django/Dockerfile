@@ -32,22 +32,22 @@ RUN pip install -r requirements.txt
 # Create the media files volume as a directory
 RUN mkdir -p /media_files \
     && chown -R django:django /media_files \
-    && chmod -R o+r /media_files
+    && chmod -R o+rw /media_files
 
 # Create the static_backend volume as a directory
 RUN mkdir -p /static_backend \
     && chown -R django:django /static_backend \
-    && chmod -R o+r /static_backend
+    && chmod -R o+rw /static_backend
 
 # Create the personal files volume as a directory
 RUN mkdir -p /website \
     && chown -R django:django /website \
-    && chmod -R o+r /website
+    && chmod -R o+rw /website
 
 # Create the supervisor configuration files volume as a directory
 RUN mkdir -p /supervisor.d \
     && chown -R django:django /supervisor.d \
-    && chmod -R o+r /supervisor.d
+    && chmod -R o+rw /supervisor.d
 
 # Create the web server logs volume as a directory
 RUN mkdir -p /web_server_logs/supervisord_logs  \
@@ -55,7 +55,7 @@ RUN mkdir -p /web_server_logs/supervisord_logs  \
     && mkdir -p /web_server_logs/daphne_logs \
     && mkdir -p /web_server_logs/server_logs \
     && chown -R django:django /web_server_logs \
-    && chmod -R o+r /web_server_logs
+    && chmod -R o+rw /web_server_logs
 
 # Create the history volume as a directory
 RUN mkdir -p /.history \

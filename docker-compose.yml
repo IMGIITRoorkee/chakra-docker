@@ -38,6 +38,8 @@ services:
     expose:
     - "8000"
     - "8001"
+    
+    user: ${CURRENT_UID}
 
     command: bash -c "source chakra_backend/.env && supervisord -c /supervisord.conf"
     # Mount the volumes on the Django container
