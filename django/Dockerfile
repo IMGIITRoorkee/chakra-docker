@@ -39,6 +39,11 @@ RUN mkdir -p /static_backend \
     && chown -R django:django /static_backend \
     && chmod -R o+rw /static_backend
 
+# Create the reverse proxy conf files volume as a directory
+RUN mkdir -p /reverse_proxy_configurations \
+    && chown -R django:django /reverse_proxy_configurations \
+    && chmod -R o+rw /reverse_proxy_configurations
+
 # Create the personal files volume as a directory
 RUN mkdir -p /website \
     && chown -R django:django /website \

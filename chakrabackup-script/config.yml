@@ -1,6 +1,6 @@
 shell: Bash
 services_directory: /home/root1/chakra-docker/chakrabackup-script/backup_script
 configs_directory: /home/root1/chakra-docker/chakrabackup-script/configs
-backup_directory: /home/root1/backups/backup
+backup_directory: /home/root1/s3bucket/chakra-backups/
 services: media_files.sh, website.sh, postgres.sh, zip.sh
 

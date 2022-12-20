@@ -85,6 +85,12 @@ services:
       source: ./codebase/chakra-backend/web_server_logs
       target: /web_server_logs
       read_only: false
+    
+      # Mount 'reverese proxy configurations' as its namesake in the root of the container
+    - type: bind
+      source: ./codebase/chakra-backend/reverse_proxy_configurations
+      target: /reverse_proxy_configurations
+      read_only: false
 
       # Mount '.history' as its namesake in the root of the container
     - type: bind
