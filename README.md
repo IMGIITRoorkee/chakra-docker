@@ -30,7 +30,7 @@ Upstream repos are cloned into this repo’s `./codebase/` directory by scripts 
 - **Docker** + **Docker Compose**
 - **git**
 - **Node.js + yarn** (used by `scripts/build/next.sh` to install deps before building the image)
-- **Python 3** (for running `chakra-core` Flask server locally in `scripts/prod.sh` / `scripts/development.sh`)
+- **Python3 (3.9 Required)** (for running `chakra-core` Flask server locally in `scripts/prod.sh` / `scripts/development.sh`)
 
 If you work on the transpiler itself:
 
@@ -310,3 +310,5 @@ docker compose up -d
 - **Backend can’t talk to core**: confirm `SERVER_URL` in backend `.env` points to your Flask server (typically `http://127.0.0.1:5000`).
 - **Ports already in use**: because containers use host networking, stop conflicting services or change ports in the upstream app configs.
 - **macOS `sed -i` errors when running build scripts**: some scripts expect GNU `sed`. Install `gnu-sed` (Homebrew) and use `gsed`, or run the build steps on Linux.
+
+- For more errors [refer this](chakra-troubleshooting.md)
