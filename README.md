@@ -30,7 +30,7 @@ Upstream repos are cloned into this repo’s `./codebase/` directory by scripts 
 - **Docker** + **Docker Compose**
 - **git**
 - **Node.js + yarn** (used by `scripts/build/next.sh` to install deps before building the image)
-- **Python3 (3.9 Required)** (for running `chakra-core` Flask server locally in `scripts/prod.sh` / `scripts/development.sh`)
+- **Python 3.9 (required)** (for running `chakra-core` Flask server locally in `scripts/prod.sh` / `scripts/development.sh`)
 
 If you work on the transpiler itself:
 
