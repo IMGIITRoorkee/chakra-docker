@@ -344,4 +344,4 @@ docker compose up -d
 - **Ports already in use**: because containers use host networking, stop conflicting services or change ports in the upstream app configs.
 - **macOS `sed -i` errors when running build scripts**: some scripts expect GNU `sed`. Install `gnu-sed` (Homebrew) and use `gsed`, or run the build steps on Linux.
 
-- For more errors [refer this](chakra-troubleshooting.md)
+- **More troubleshooting**: see [chakra-troubleshooting.md](chakra-troubleshooting.md).
