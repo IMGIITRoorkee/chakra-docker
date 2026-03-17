@@ -30,7 +30,7 @@ Upstream repos are cloned into this repo’s `./codebase/` directory by scripts 
 - **Docker** + **Docker Compose**
 - **git**
 - **Node.js + yarn** (used by `scripts/build/next.sh` to install deps before building the image)
-- **Python 3** (for running `chakra-core` Flask server locally in `scripts/prod.sh` / `scripts/development.sh`)
+- **Python 3.9 (required)** (for running `chakra-core` Flask server locally in `scripts/prod.sh` / `scripts/development.sh`)
 
 If you work on the transpiler itself:
 
@@ -184,6 +184,39 @@ python3 manage.py migrate
 python3 manage.py createsuperuser
 ```
 
+### Seeding the website folder structure and test data
+
+After running migrations, seed the required root folders (`HTML`, `XML`, `JoshUsers`) and the full `WEBSITE_NODE_STRUCTURE` (all departments, sections, etc.) using the `seed_website` management command.
+
+**Local (non-Docker) setup:**
+
+```bash
+cd codebase/chakra-backend
+source chakra_backend/.env
+
+# Seed root folders + full website node tree only
+./chakra-backend-env/bin/python manage.py seed_website
+
+# Seed root folders + full tree + a TestDept XMLPage (useful for dev/preview testing)
+./chakra-backend-env/bin/python manage.py seed_website --test-page
+```
+
+**Inside Docker:**
+
+```bash
+docker compose exec chakra-backend bash
+source chakra_backend/.env
+python3 manage.py seed_website
+# or with test page:
+python3 manage.py seed_website --test-page
+```
+
+The command is **idempotent** — safe to re-run if folders already exist on disk or in the DB.
+
+The `--test-page` flag additionally creates:
+- `XML/TestDept/index.xml` and `HTML/TestDept/index.html` with a minimal valid chakra-core XML page
+- Corresponding `File`, `Page`, `XMLPage`, and `Menu` DB records so the preview endpoint works immediately
+
 If you use legacy Compose:
 
 ```bash
@@ -310,3 +343,5 @@ docker compose up -d
 - **Backend can’t talk to core**: confirm `SERVER_URL` in backend `.env` points to your Flask server (typically `http://127.0.0.1:5000`).
 - **Ports already in use**: because containers use host networking, stop conflicting services or change ports in the upstream app configs.
 - **macOS `sed -i` errors when running build scripts**: some scripts expect GNU `sed`. Install `gnu-sed` (Homebrew) and use `gsed`, or run the build steps on Linux.
+
+- **More troubleshooting**: see [chakra-troubleshooting.md](chakra-troubleshooting.md).
