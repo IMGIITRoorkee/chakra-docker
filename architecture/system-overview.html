@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Overview — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>System Overview</span></div>
+
+<h1>System <em>Overview</em></h1>
+<p class="page-subtitle">Verified against production servers (bifrost + edith) &mdash; April 2026</p>
+
+<div class="g4" style="margin-bottom:36px;">
+  <div class="stat"><div class="v">2</div><div class="l">prod servers</div></div>
+  <div class="stat"><div class="v">6</div><div class="l">Docker containers</div></div>
+  <div class="stat"><div class="v">4</div><div class="l">repositories</div></div>
+  <div class="stat"><div class="v">5</div><div class="l">lsyncd streams</div></div>
+  <div class="stat"><div class="v">18+</div><div class="l">subdomain sites</div></div>
+  <div class="stat"><div class="v">95 GB</div><div class="l">website content</div></div>
+</div>
+
+<!-- ══════════ HOW CHAKRA WORKS ══════════ -->
+<div class="card ga">
+<h2>How Chakra Works</h2>
+<p style="margin-bottom:16px;">Chakra is a <strong>Component Content Management System (CCMS)</strong>. Instead of writing HTML, editors compose pages from pre-built UI components (sliders, cards, tables, etc.) in a visual editor. The system stores these as XML, then converts them to static HTML for delivery.</p>
+
+<div class="g2" style="margin-top:20px;">
+  <div>
+    <h3>The Pipeline</h3>
+    <ol style="padding-left:18px;">
+      <li><strong>Edit</strong> &mdash; Editor uses Next.js frontend to compose page from components</li>
+      <li><strong>Save</strong> &mdash; Component tree saved as XML in <code>website/XML/</code></li>
+      <li><strong>Preview</strong> &mdash; Transpiler converts XML &rarr; HTML in-memory, returns to browser</li>
+      <li><strong>Publish</strong> &mdash; Transpiler writes HTML to <code>website/HTML/</code></li>
+      <li><strong>Sync</strong> &mdash; lsyncd pushes HTML to root2 via rsync</li>
+      <li><strong>Serve</strong> &mdash; Nginx on root2 serves static HTML to public users</li>
+    </ol>
+  </div>
+  <div>
+    <h3>The Repos</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Repo</th><th>Stack</th><th>Role</th></tr>
+      <tr><td><code>chakra-backend</code></td><td>Django / Python</td><td>APIs, auth, file management, publish workflow</td></tr>
+      <tr><td><code>chakra-frontend</code></td><td>Next.js / React</td><td>Editor UI, component builder, page management</td></tr>
+      <tr><td><code>chakra-core</code></td><td>Scala / Flask</td><td>XML &rarr; HTML transpiler</td></tr>
+      <tr><td><code>chakra-docker</code></td><td>Docker Compose</td><td>Orchestration, deployment scripts, this doc</td></tr>
+    </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ TWO SERVERS ══════════ -->
+<div class="card gb">
+<h2>Two-Server Architecture</h2>
+<p style="margin-bottom:16px;">Production runs on two physical servers on the same network (192.168.121.x). They are connected by <strong>lsyncd</strong> &mdash; a daemon on root1 that watches directories and rsyncs changes to root2 in near-real-time over SSH.</p>
+
+<div class="g2" style="margin-top:20px;">
+  <div>
+    <h3>root1 / bifrost (192.168.121.230)</h3>
+    <p><strong>Application server.</strong> Runs all logic, stores all source data.</p>
+    <ul>
+      <li><strong>Docker containers:</strong> Django backend, Next.js frontend, PostgreSQL, Memcached, RabbitMQ</li>
+      <li><strong>Host processes:</strong> Flask + chakra-core (tmux), lsyncd, Nginx</li>
+      <li><strong>Filesystem:</strong> <code>website/</code> (XML + HTML + JoshUsers), <code>media_files/</code>, reverse proxy configs</li>
+      <li><strong>S3 mounts:</strong> s3bucket, s3bucket2 (backups)</li>
+      <li><strong>Cron:</strong> Weekly DB backup, daily incremental to S3, hourly preview cleanup</li>
+    </ul>
+  </div>
+  <div>
+    <h3>root2 / edith (192.168.121.188)</h3>
+    <p><strong>Static file server.</strong> Serves published websites to the public. No app logic.</p>
+    <ul>
+      <li><strong>Nginx:</strong> 18+ subdomain server blocks (cec.iitr.ac.in, ece.iitr.ac.in, etc.)</li>
+      <li><strong>inotifywait:</strong> Watches <code>/etc/nginx/</code> for config changes &rarr; auto-reloads nginx</li>
+      <li><strong>Filesystem:</strong> <code>/home/root2/new_website/</code> (70 GB, synced from root1)</li>
+      <li><strong>S3 mount:</strong> Faculty personal websites at <code>s3bucket/public/Websites/</code></li>
+      <li><strong>No Docker, no database, no cron, no application code</strong></li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ LSYNCD ══════════ -->
+<div class="card ge">
+<h2>lsyncd Sync Streams</h2>
+<p style="margin-bottom:16px;">Configured at <code>/etc/lsyncd/lsyncd.conf.lua</code> on root1. All streams use SSH key auth (<code>/home/root1/.ssh/website-key</code>).</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>#</th><th>Source (root1)</th><th>Target (root2)</th><th>What</th></tr>
+  <tr><td>1</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>Published pages + assets/ folders</td></tr>
+  <tr><td>2</td><td><code>website/JoshUsers/</code></td><td><code>/home/root2/new_website/Josh Users/</code></td><td>Josh user websites</td></tr>
+  <tr><td>3</td><td><code>reverse_proxy_configurations/subdomains/</code></td><td><code>/etc/nginx/sites-available/subdomains/</code></td><td>Subdomain nginx configs</td></tr>
+  <tr><td>4</td><td><code>reverse_proxy_configurations/shorturls/</code></td><td><code>/etc/nginx/conf.d/includes/</code></td><td>Short URL location blocks</td></tr>
+  <tr><td>5</td><td><code>reverse_proxy_configurations/josh-subdomains/</code></td><td><code>/etc/nginx/sites-available/josh-subdomains/</code></td><td>Josh subdomain configs</td></tr>
+</table>
+</div>
+<p style="margin-top:12px;"><strong>Key insight:</strong> <code>website/XML/</code> and <code>media_files/</code> are <em>not</em> synced. Only published HTML reaches root2. Preview images are served from root1 directly via <code>chakra.channeli.in</code>.</p>
+</div>
+
+<!-- ══════════ DOCKER ══════════ -->
+<div class="card gc">
+<h2>Docker Containers &amp; Mounts</h2>
+<p style="margin-bottom:16px;">All containers use <code>network_mode: host</code> &mdash; no Docker networking, services bind directly on host ports. Defined in <code>docker-compose.yml</code>.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Container</th><th>Image</th><th>Port</th><th>Purpose</th></tr>
+  <tr><td><code>chakra-backend</code></td><td>chakra-backend:latest</td><td>8000 / 8001</td><td>Django (Gunicorn + Daphne + Celery) under supervisord</td></tr>
+  <tr><td><code>chakra-frontend</code></td><td>chakra-frontend:latest</td><td>3000</td><td>Next.js editor (PM2)</td></tr>
+  <tr><td><code>database</code></td><td>chakra-postgres:latest</td><td>5432</td><td>PostgreSQL</td></tr>
+  <tr><td><code>cache</code></td><td>chakra-memcached:latest</td><td>11211</td><td>Memcached</td></tr>
+  <tr><td><code>message-broker</code></td><td>chakra-rabbitmq:latest</td><td>5672</td><td>RabbitMQ (Celery broker)</td></tr>
+  <tr><td><code>libretranslate</code></td><td>iitr-libretranslate:latest</td><td>13338</td><td>Hindi translation service</td></tr>
+</table>
+</div>
+
+<h3>Backend Bind Mounts</h3>
+<p>The backend container has extensive bind mounts from the host filesystem:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Host Path</th><th>Container Path</th><th>R/W</th><th>Purpose</th></tr>
+  <tr><td><code>codebase/chakra-backend/</code></td><td><code>/chakra-backend</code></td><td>RO</td><td>Application code</td></tr>
+  <tr><td><code>codebase/chakra-backend/website</code></td><td><code>/website</code></td><td>RW</td><td>XML/HTML content</td></tr>
+  <tr><td><code>codebase/chakra-backend/media_files</code></td><td><code>/media_files</code></td><td>RW</td><td>Preview images, uploads</td></tr>
+  <tr><td><code>codebase/chakra-backend/reverse_proxy_configurations</code></td><td><code>/reverse_proxy_configurations</code></td><td>RW</td><td>Generated nginx configs</td></tr>
+  <tr><td><code>codebase/chakra-backend/static_files</code></td><td><code>/static_files</code></td><td>RW</td><td>Generated templates</td></tr>
+  <tr><td><code>codebase/chakra-backend/web_server_logs</code></td><td><code>/web_server_logs</code></td><td>RW</td><td>Gunicorn/Daphne/Celery logs</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ NGINX ══════════ -->
+<div class="card ga">
+<h2>Nginx Routing</h2>
+<div class="g2">
+  <div>
+    <h3>root1 &mdash; chakra.channeli.in</h3>
+    <p>Application traffic for editors and the CMS API.</p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Path</th><th>Destination</th></tr>
+      <tr><td><code>/chakra_auth/*</code></td><td>Gunicorn :8000</td></tr>
+      <tr><td><code>/generator/*</code></td><td>Gunicorn :8000</td></tr>
+      <tr><td><code>/filemanager/*</code></td><td>Gunicorn :8000</td></tr>
+      <tr><td><code>/ws/*</code></td><td>Daphne :8001</td></tr>
+      <tr><td><code>/media/*</code></td><td><code>/media_files/</code></td></tr>
+      <tr><td><code>/static/*</code></td><td><code>/static_files/</code></td></tr>
+      <tr><td><code>/*</code> (fallback)</td><td>Next.js :3000</td></tr>
+    </table>
+    </div>
+  </div>
+  <div>
+    <h3>root2 &mdash; subdomain.iitr.ac.in</h3>
+    <p>Public-facing department websites. Each subdomain gets its own nginx server block.</p>
+    <div class="code-block"><span class="comment"># Example: cec.iitr.ac.in</span>
+server {
+    listen 443 ssl;
+    server_name .cec.iitr.ac.in;
+    root <span class="str">'/home/root2/new_website/cec'</span>;
+    ssl_certificate <span class="path">/certificates/...</span>;
+    include conf.d/includes/compression.conf;
+}
+
+<span class="comment"># Faculty profile aliases</span>
+location <span class="str">"/~ECE/Faculty_Name"</span> {
+    alias <span class="str">'/home/root2/new_website/...</span>
+        <span class="str">.../Faculty/100XXX.html'</span>;
+}</div>
+    <p style="margin-top:10px;">Faculty personal websites served from S3: <code>/home/root2/s3bucket/public/Websites/</code></p>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ TRANSPILER ══════════ -->
+<div class="card gd">
+<h2>The Transpiler (chakra-core)</h2>
+<p style="margin-bottom:16px;">A Scala binary wrapped in a Flask API. Converts XML component trees to static HTML using rules from <code>components.json</code>.</p>
+
+<div class="g2">
+  <div>
+    <h3>How It Runs</h3>
+    <ul>
+      <li><strong>Location:</strong> <code>/home/root1/chakra-docker/codebase/chakra-core/</code></li>
+      <li><strong>Process:</strong> <code>flask run --host=0.0.0.0 --port=5000</code> in tmux</li>
+      <li><strong>Binary:</strong> <code>./chakra-core</code> (built via <code>sbt assembly</code> / <code>pack.sh</code>)</li>
+      <li><strong>Config:</strong> <code>components.json</code> (320+ component definitions)</li>
+    </ul>
+    <p style="margin-top:10px;">Django POSTs to <code>http://127.0.0.1:5000/</code>. Flask decodes params, runs the Scala binary as a subprocess, returns stdout (preview) or writes to disk (publish).</p>
+  </div>
+  <div>
+    <h3>Preview vs Publish</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th></th><th>Preview</th><th>Publish</th></tr>
+      <tr><td><strong>Flag</strong></td><td><code>--write-stdout</code></td><td><code>-o {path}</code></td></tr>
+      <tr><td><strong>replaceAssets</strong></td><td>true</td><td>false</td></tr>
+      <tr><td><strong>Image paths</strong></td><td>Absolute URLs</td><td>Relative <code>./assets</code></td></tr>
+      <tr><td><strong>Output</strong></td><td>HTML string to Django</td><td>HTML file to disk</td></tr>
+    </table>
+    </div>
+    <p style="margin-top:8px;"><strong>assets_host in prod:</strong></p>
+    <div class="code-block"><span class="str">"assets_host"</span>: <span class="str">"https://chakra.channeli.in/media/preview"</span>
+<span class="str">"dummy_assets_host"</span>: <span class="str">"./assets"</span></div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ PROCESS MANAGEMENT ══════════ -->
+<div class="card gb">
+<h2>Process Management</h2>
+<p style="margin-bottom:16px;">Inside the Django Docker container, <strong>supervisord</strong> manages three processes:</p>
+<div class="g3">
+  <div class="step"><div class="n">HTTP</div><h4>Gunicorn</h4><p>5 workers, gthread, 120s timeout. Handles all Django REST API traffic on port 8000.</p></div>
+  <div class="step"><div class="n">WS</div><h4>Daphne</h4><p>ASGI server for WebSocket connections on port 8001. Real-time features.</p></div>
+  <div class="step"><div class="n">BG</div><h4>Celery</h4><p>Background task worker. Consumes from RabbitMQ. Runs cron jobs (preview cleanup, notice publishing).</p></div>
+</div>
+
+<h3>Celery Cron Jobs</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Schedule</th><th>Function</th><th>Purpose</th></tr>
+  <tr><td>Every 60 min</td><td><code>generator.cron.my_scheduled_job</code></td><td>Runs <code>tmp_clear.sh</code> &mdash; deletes preview images older than 1 day</td></tr>
+  <tr><td>Every 720 min</td><td><code>generator.cron.notice_list_publish_cron</code></td><td>Auto-publishes notice list pages</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ ENV VARS ══════════ -->
+<div class="card gc">
+<h2>Key Environment Variables</h2>
+<p style="margin-bottom:16px;">Configured in <code>chakra_backend/.env</code> (created from <code>stencil.env</code>). Loaded by Django at startup.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Variable</th><th>Example</th><th>Purpose</th></tr>
+  <tr><td><code>PERSONAL_ROOT</code></td><td><code>/website</code></td><td>Base path for all website content</td></tr>
+  <tr><td><code>XML_ROOT_URL</code></td><td><code>/website/XML/</code></td><td>XML source content root</td></tr>
+  <tr><td><code>HTML_ROOT_URL</code></td><td><code>/website/HTML/</code></td><td>Published HTML output root</td></tr>
+  <tr><td><code>PREVIEW_IMAGE_PATH</code></td><td><code>/media_files/preview</code></td><td>Where preview images are temporarily stored</td></tr>
+  <tr><td><code>SERVER_URL</code></td><td><code>http://127.0.0.1:5000</code></td><td>Flask transpiler endpoint</td></tr>
+  <tr><td><code>TRANSPILER_PATH</code></td><td>Path to chakra-core dir</td><td>Working directory for Scala binary</td></tr>
+  <tr><td><code>TRANSPILER_COMPONENTS_PATH</code></td><td>Path to components.json</td><td>Component definitions for transpiler</td></tr>
+  <tr><td><code>MEDIA_ROOT</code></td><td><code>/media_files/</code></td><td>Django media root (nginx serves as /media)</td></tr>
+  <tr><td><code>SECRET_FLASK</code></td><td>(secret)</td><td>Auth token for transpiler API</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ BACKUPS ══════════ -->
+<div class="card ge">
+<h2>Backup Strategy</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>What</th><th>How</th><th>Schedule</th><th>Destination</th></tr>
+  <tr><td>PostgreSQL database</td><td><code>database_backup.sh</code></td><td>Weekly (Sunday midnight)</td><td>S3 bucket</td></tr>
+  <tr><td>All data (incremental)</td><td><code>incremental_backup_to_aws_script.sh</code></td><td>Daily (3 AM)</td><td>S3 bucket</td></tr>
+  <tr><td>Published content</td><td>lsyncd (continuous)</td><td>Real-time</td><td>root2 filesystem</td></tr>
+</table>
+</div>
+<p style="margin-top:10px;">Both servers mount S3 buckets. root1 has <code>s3bucket</code> and <code>s3bucket2</code>. root2 has <code>s3bucket</code> with faculty websites and backups.</p>
+</div>
+
+<!-- ══════════ LOCAL VS PROD ══════════ -->
+<div class="card ga">
+<h2>Local vs Production</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Aspect</th><th>Local Development</th><th>Production</th></tr>
+  <tr><td>Nginx</td><td>Not included in docker-compose</td><td>Runs on both servers</td></tr>
+  <tr><td>lsyncd</td><td>Not needed (single machine)</td><td>5 sync streams root1 &rarr; root2</td></tr>
+  <tr><td>root2</td><td>Does not exist</td><td>Separate server for public sites</td></tr>
+  <tr><td>components.json assets_host</td><td>Typically localhost</td><td><code>https://chakra.channeli.in/media/preview</code></td></tr>
+  <tr><td>SSL</td><td>Not configured</td><td>SSL certs on both servers</td></tr>
+  <tr><td>S3</td><td>Not mounted</td><td>Mounted on both servers</td></tr>
+  <tr><td>Transpiler</td><td><code>flask run</code> in terminal</td><td>tmux session (persistent)</td></tr>
+  <tr><td>Deploy</td><td><code>docker compose up -d</code></td><td>Jenkins jobs + manual fallback</td></tr>
+</table>
+</div>
+<p style="margin-top:10px;">For local setup instructions, see the <a href="https://github.com/IMGIITRoorkee/chakra-docker/blob/master/README.md">chakra-docker README</a>.</p>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

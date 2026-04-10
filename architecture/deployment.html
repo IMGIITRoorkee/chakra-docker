@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment Guide — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Deployment Guide</span></div>
+
+<h1>Deployment <em>Guide</em></h1>
+<p class="page-subtitle">Jenkins-preferred deployment with manual fallback procedures &mdash; verified against production</p>
+
+<div class="g4" style="margin-bottom:36px;">
+  <div class="stat"><div class="v">Jenkins</div><div class="l">preferred method</div></div>
+  <div class="stat"><div class="v">3</div><div class="l">deployable repos</div></div>
+  <div class="stat"><div class="v">GitHub Actions</div><div class="l">CI/CD on PRs</div></div>
+  <div class="stat"><div class="v">supervisord</div><div class="l">process manager</div></div>
+</div>
+
+<!-- ══════════ PREFERRED METHOD ══════════ -->
+<div class="card ga">
+<h2>Preferred Method: Jenkins</h2>
+<p>Each repository has a dedicated Jenkins job that handles pulling, building, and restarting services. Use Jenkins whenever possible &mdash; manual deployment is a fallback for when Jenkins is unavailable or a quick hotfix is needed.</p>
+</div>
+
+<!-- ══════════ MANUAL: BACKEND ══════════ -->
+<div class="card gb">
+<h2>Manual Fallback &mdash; Backend</h2>
+<p style="margin-bottom:16px;">Pull latest code and restart the Docker container. The backend code is bind-mounted read-only, so a container restart picks up the new code.</p>
+
+<div class="code-block"><span class="comment"># SSH into root1, then:</span>
+cd /home/root1/chakra-docker/codebase/chakra-backend
+git pull origin master --rebase
+docker restart chakra-docker_chakra-backend_1</div>
+
+<div class="table-wrap" style="margin-top:16px;">
+<table>
+  <tr><th>Step</th><th>What Happens</th></tr>
+  <tr><td><code>git pull --rebase</code></td><td>Fetches and rebases local commits on top of remote master</td></tr>
+  <tr><td><code>docker restart</code></td><td>supervisord restarts Gunicorn, Daphne, and Celery inside the container</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ MANUAL: TRANSPILER ══════════ -->
+<div class="card ge">
+<h2>Manual Fallback &mdash; Transpiler</h2>
+<p style="margin-bottom:16px;">The transpiler runs as a Flask process in tmux, outside Docker. Deployment requires rebuilding the Scala binary and restarting Flask.</p>
+
+<div class="code-block"><span class="comment"># SSH into root1, then:</span>
+cd /home/root1/chakra-docker/codebase/chakra-core
+source chakra-core-env/bin/activate
+git fetch origin &amp;&amp; git reset --hard FETCH_HEAD
+./pack.sh
+
+<span class="comment"># Then in the tmux session:</span>
+<span class="comment"># Ctrl+C to stop Flask, then restart:</span>
+flask run --host=0.0.0.0 --port=5000</div>
+
+<div class="card" style="border-left:3px solid var(--red); margin-top:16px; padding:12px 16px;">
+<h3 style="color:var(--red);">Warning: git reset --hard</h3>
+<p><code>git reset --hard FETCH_HEAD</code> <strong>wipes local changes</strong> to <code>components.json</code>. This file contains the <code>assets_host</code> configuration that differs between local and production. After reset, verify that <code>assets_host</code> is set correctly:</p>
+<div class="code-block" style="margin-top:8px;"><span class="str">"assets_host"</span>: <span class="str">"https://chakra.channeli.in/media/preview"</span>
+<span class="str">"dummy_assets_host"</span>: <span class="str">"./assets"</span></div>
+</div>
+</div>
+
+<!-- ══════════ MANUAL: FRONTEND ══════════ -->
+<div class="card gc">
+<h2>Manual Fallback &mdash; Frontend</h2>
+<p style="margin-bottom:16px;">The Next.js frontend runs in its own Docker container with PM2.</p>
+
+<div class="code-block"><span class="comment"># SSH into root1, then:</span>
+cd /home/root1/chakra-docker/codebase/chakra-frontend
+git pull origin master --rebase
+docker restart chakra-docker_chakra_frontend_1</div>
+</div>
+
+<!-- ══════════ FULL STACK ══════════ -->
+<div class="card gd">
+<h2>Full Stack Restart</h2>
+<p style="margin-bottom:16px;">Brings up all Docker containers. Use this after server reboot or major configuration changes.</p>
+
+<div class="code-block"><span class="comment"># SSH into root1, then:</span>
+cd /home/root1/chakra-docker
+CURRENT_UID=<span class="str">"$(id -u):$(id -g)"</span> docker compose up -d</div>
+
+<p style="margin-top:12px;">The <code>CURRENT_UID</code> variable ensures containers run with the correct user permissions for bind-mounted volumes. This starts all six containers: backend, frontend, database, cache, message-broker, and libretranslate.</p>
+
+<div class="table-wrap" style="margin-top:16px;">
+<table>
+  <tr><th>Container</th><th>Service</th></tr>
+  <tr><td><code>chakra-docker_chakra-backend_1</code></td><td>Django (Gunicorn + Daphne + Celery)</td></tr>
+  <tr><td><code>chakra-docker_chakra_frontend_1</code></td><td>Next.js (PM2)</td></tr>
+  <tr><td><code>database</code></td><td>PostgreSQL</td></tr>
+  <tr><td><code>cache</code></td><td>Memcached</td></tr>
+  <tr><td><code>message-broker</code></td><td>RabbitMQ</td></tr>
+  <tr><td><code>libretranslate</code></td><td>Hindi translation</td></tr>
+</table>
+</div>
+<p style="margin-top:10px;"><strong>Note:</strong> The transpiler (Flask + chakra-core) runs outside Docker in a tmux session and must be restarted separately.</p>
+</div>
+
+<!-- ══════════ CI/CD ══════════ -->
+<div class="card ga">
+<h2>CI/CD Pipeline</h2>
+<p style="margin-bottom:16px;">GitHub Actions provides automated quality checks on pull requests before code reaches production.</p>
+
+<div class="g2" style="margin-top:20px;">
+  <div>
+    <h3>Workflow: backend-quality.yml</h3>
+    <p>Runs on every PR to the backend repository:</p>
+    <div class="g3" style="margin-top:12px;">
+      <div class="step"><div class="n">1</div><h4>Compile Check</h4><p>Verifies the codebase compiles without errors.</p></div>
+      <div class="step"><div class="n">2</div><h4>Ruff Lint</h4><p>Python linter for code style and common errors.</p></div>
+      <div class="step"><div class="n">3</div><h4>Unit Tests</h4><p>Runs test suite with PostgreSQL 15 service container.</p></div>
+    </div>
+  </div>
+  <div>
+    <h3>Pipeline Flow</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Stage</th><th>Tool</th><th>Trigger</th></tr>
+      <tr><td>PR Quality</td><td>GitHub Actions</td><td>Pull request opened/updated</td></tr>
+      <tr><td>Deploy</td><td>Jenkins</td><td>Manual trigger (per repo)</td></tr>
+      <tr><td>Fallback</td><td>SSH + manual</td><td>When Jenkins unavailable</td></tr>
+    </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ MONITORING ══════════ -->
+<div class="card gb">
+<h2>Monitoring &amp; Logs</h2>
+<p style="margin-bottom:16px;">All application logs are written to the bind-mounted <code>/web_server_logs/</code> directory, accessible from the host at <code>codebase/chakra-backend/web_server_logs/</code>.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Log</th><th>Process</th><th>Contains</th></tr>
+  <tr><td>Gunicorn access log</td><td>HTTP server</td><td>API request logs, status codes, timing</td></tr>
+  <tr><td>Gunicorn error log</td><td>HTTP server</td><td>Python exceptions, startup errors</td></tr>
+  <tr><td>Daphne log</td><td>WebSocket server</td><td>WS connection events, ASGI errors</td></tr>
+  <tr><td>Celery stdout/stderr</td><td>Background worker</td><td>Task execution, cron job output, broker errors</td></tr>
+</table>
+</div>
+
+<h3>Supervisor Control</h3>
+<p style="margin-bottom:8px;">Inside the backend container, use supervisord to inspect individual processes:</p>
+<div class="code-block"><span class="comment"># Enter the backend container</span>
+docker exec -it chakra-docker_chakra-backend_1 bash
+
+<span class="comment"># Check process status</span>
+supervisorctl status
+
+<span class="comment"># Restart a specific process</span>
+supervisorctl restart gunicorn
+supervisorctl restart daphne
+supervisorctl restart celery</div>
+</div>
+
+<!-- ══════════ WARNINGS ══════════ -->
+<div class="card ge">
+<h2>Deployment Warnings</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Risk</th><th>Detail</th><th>Mitigation</th></tr>
+  <tr><td><strong>components.json wipe</strong></td><td><code>git reset --hard</code> on chakra-core overwrites local <code>components.json</code> with repo version</td><td>Back up the file before reset; verify <code>assets_host</code> after</td></tr>
+  <tr><td><strong>.env sourcing</strong></td><td><code>manage.py</code> commands inside Docker require the environment to be loaded</td><td>Always <code>source .env</code> before running <code>manage.py</code> commands</td></tr>
+  <tr><td><strong>Read-only code mount</strong></td><td>Backend code is mounted read-only inside Docker &mdash; edits on host are reflected but container cannot modify code</td><td>Edit code on host, not inside the container</td></tr>
+  <tr><td><strong>Transpiler outside Docker</strong></td><td>Flask/chakra-core runs in tmux, not managed by Docker Compose</td><td>Check tmux session after server reboot; restart manually</td></tr>
+</table>
+</div>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

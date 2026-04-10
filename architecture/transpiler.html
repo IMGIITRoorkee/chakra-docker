@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transpiler (chakra-core) — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Transpiler (chakra-core)</span></div>
+
+<h1>Transpiler <em>(chakra-core)</em></h1>
+<p class="page-subtitle">Scala binary wrapped in a Flask API &mdash; converts XML component trees to static HTML</p>
+
+<!-- ══════════ HOW IT RUNS ══════════ -->
+<div class="card ga">
+<h2>How It Runs</h2>
+<p style="margin-bottom:16px;">The transpiler is a <strong>Scala binary</strong> wrapped in a lightweight <strong>Flask API</strong>. It runs on the host (not in Docker) inside a persistent tmux session.</p>
+
+<div class="g2">
+  <div>
+    <h3>Runtime Details</h3>
+    <ul>
+      <li><strong>Location:</strong> <code>/home/root1/chakra-docker/codebase/chakra-core/</code></li>
+      <li><strong>Process:</strong> <code>flask run --host=0.0.0.0 --port=5000</code> in tmux session</li>
+      <li><strong>Binary:</strong> <code>./chakra-core</code> (built via <code>sbt assembly</code> / <code>pack.sh</code>)</li>
+      <li><strong>Config:</strong> <code>components.json</code> (320+ component definitions)</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Flask Endpoints</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Method</th><th>Path</th><th>Purpose</th></tr>
+      <tr><td><code>POST</code></td><td><code>/</code></td><td>Main transpiler &mdash; converts XML to HTML</td></tr>
+      <tr><td><code>GET</code></td><td><code>/health</code></td><td>Health check</td></tr>
+      <tr><td><code>GET</code></td><td><code>/health/ready</code></td><td>Readiness check</td></tr>
+    </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ DJANGO INTEGRATION ══════════ -->
+<div class="card gb">
+<h2>Django Integration</h2>
+<p style="margin-bottom:16px;">Django POSTs to <code>http://127.0.0.1:5000/</code> with the following parameters. Flask decodes them, constructs a CLI command, and runs the Scala binary as a subprocess.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Parameter</th><th>Purpose</th></tr>
+  <tr><td><code>input_path</code></td><td>Path to the XML source file</td></tr>
+  <tr><td><code>output_path</code></td><td>Path for the generated HTML output</td></tr>
+  <tr><td><code>write_stdout</code></td><td>If true, return HTML as string instead of writing to disk</td></tr>
+  <tr><td><code>transpiler_components_path</code></td><td>Path to <code>components.json</code></td></tr>
+  <tr><td><code>menu</code></td><td>Menu JSON for navigation generation</td></tr>
+  <tr><td><code>header</code></td><td>Header HTML/config</td></tr>
+  <tr><td><code>footer</code></td><td>Footer HTML/config</td></tr>
+  <tr><td><code>secret_token</code></td><td>Authentication token (must match <code>SECRET_FLASK</code>)</td></tr>
+</table>
+</div>
+
+<h3>Constructed CLI Command</h3>
+<div class="code-block"><span class="fn">./chakra-core</span> <span class="str">--write-stdout</span> <span class="str">-i</span> <span class="path">{input_path}</span> <span class="str">-c</span> <span class="path">{components.json}</span> <span class="str">-m</span> <span class="path">{menu}</span></div>
+<p>The <code>CODEBASE_PATH</code> env var prefixes all file paths so the transpiler can locate XML files on disk.</p>
+</div>
+
+<!-- ══════════ COMPONENTS.JSON ══════════ -->
+<div class="card gc">
+<h2>components.json</h2>
+<p style="margin-bottom:16px;">The component definition file contains <strong>320+ UI components</strong>, each specifying CSS classes, JS files, and allowed child components. This is the source of truth for what the transpiler can render.</p>
+
+<h3>Asset Configuration</h3>
+<div class="code-block"><span class="str">"assets_host"</span>: <span class="str">"https://chakra.channeli.in/media/preview"</span>
+<span class="str">"dummy_assets_host"</span>: <span class="str">"./assets"</span></div>
+<p style="margin-top:12px;">The <strong>replaceAssets</strong> logic in <code>ImageSpec.scala</code> controls how image paths are resolved. When <code>writeToStdout=true</code>, the transpiler replaces <code>"./assets"</code> with the full <code>assets_host</code> URL in Image and FluidImage <code>src</code> attributes.</p>
+</div>
+
+<!-- ══════════ PREVIEW VS PUBLISH ══════════ -->
+<div class="card gd">
+<h2>Preview vs Publish</h2>
+<p style="margin-bottom:16px;">The transpiler operates in two distinct modes depending on how it is invoked by Django.</p>
+
+<div class="g2">
+  <div>
+    <h3>Preview Mode</h3>
+    <ul>
+      <li><strong>Flag:</strong> <code>--write-stdout</code></li>
+      <li><strong>replaceAssets:</strong> true</li>
+      <li><strong>Image paths:</strong> Absolute URLs (<code>https://chakra.channeli.in/media/preview</code>)</li>
+      <li><strong>Output:</strong> HTML string returned to Django, sent to browser</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Publish Mode</h3>
+    <ul>
+      <li><strong>Flag:</strong> <code>-o {output_path}</code></li>
+      <li><strong>replaceAssets:</strong> false</li>
+      <li><strong>Image paths:</strong> Relative <code>./assets</code></li>
+      <li><strong>Output:</strong> HTML file written to disk at output path</li>
+    </ul>
+  </div>
+</div>
+
+<div class="table-wrap" style="margin-top:20px;">
+<table>
+  <tr><th></th><th>Preview</th><th>Publish</th></tr>
+  <tr><td><strong>Flag</strong></td><td><code>--write-stdout</code></td><td><code>-o {path}</code></td></tr>
+  <tr><td><strong>replaceAssets</strong></td><td>true</td><td>false</td></tr>
+  <tr><td><strong>Image paths</strong></td><td>Absolute URLs</td><td>Relative <code>./assets</code></td></tr>
+  <tr><td><strong>Output</strong></td><td>HTML string to Django</td><td>HTML file to disk</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ BUILD ══════════ -->
+<div class="card ge">
+<h2>Building the Transpiler</h2>
+<p style="margin-bottom:16px;">The Scala binary is compiled using <strong>sbt</strong> (Scala Build Tool) and packaged into a standalone executable.</p>
+
+<div class="code-block"><span class="comment"># Build the fat JAR</span>
+<span class="fn">sbt</span> assembly
+
+<span class="comment"># Or use the packaging script</span>
+<span class="fn">./pack.sh</span></div>
+<p style="margin-top:12px;">After building, the <code>./chakra-core</code> binary is ready to be invoked by the Flask wrapper. The Flask server must be restarted if the binary is updated.</p>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

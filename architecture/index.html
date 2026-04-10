@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chakra CMS — Architecture Reference</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+
+<div class="hero">
+  <h1>Chakra <em>CMS</em></h1>
+  <p class="tagline">A Component Content Management System built for IIT Roorkee. Editors build pages from UI-kit components, the system generates XML, a Scala transpiler renders static HTML, and lsyncd pushes it live across two production servers.</p>
+</div>
+
+<div class="card ga fade-in">
+<h2>Start Here</h2>
+<p style="margin-bottom:18px;">Pick your path based on what you need.</p>
+<div class="g3">
+  <div class="step"><div class="n">1</div><h4>Understand the System</h4><p>Two servers, five Docker containers, a Scala transpiler, and lsyncd tying it all together.</p><p style="margin-top:8px;"><a href="system-overview.html">System Overview &rarr;</a></p></div>
+  <div class="step"><div class="n">2</div><h4>Follow an Image</h4><p>Trace how a single image flows from upload through preview, publish, sync, and delivery.</p><p style="margin-top:8px;"><a href="image-lifecycle.html">Image Lifecycle &rarr;</a></p></div>
+  <div class="step"><div class="n">3</div><h4>Deploy to Prod</h4><p>Jenkins, Docker, tmux, lsyncd. How updates actually reach the live IIT Roorkee websites.</p><p style="margin-top:8px;"><a href="deployment.html">Deployment Guide &rarr;</a></p></div>
+</div>
+</div>
+
+<!-- System Map SVG -->
+<div class="card gb fade-in fade-in-d1">
+<h2>System Map</h2>
+<svg viewBox="0 0 960 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- root1 / bifrost -->
+  <rect x="15" y="10" width="580" height="500" rx="14" fill="#12151c" stroke="#3a4556" stroke-width="1"/>
+  <text x="35" y="36" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600">root1 / bifrost &mdash; Application Server</text>
+
+  <!-- Docker zone -->
+  <rect x="30" y="55" width="380" height="200" rx="10" fill="#181c2680" stroke="#5ba4e6" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="48" y="76" fill="#5ba4e6" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">DOCKER (host networking)</text>
+
+  <a href="backend.html">
+  <rect x="45" y="90" width="165" height="60" rx="8" fill="#4cc98a10" stroke="#4cc98a" stroke-width="1.5"/>
+  <text x="60" y="112" fill="#4cc98a" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">chakra-backend</text>
+  <text x="60" y="128" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Django &middot; Gunicorn:8000</text>
+  <text x="60" y="140" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Daphne:8001 &middot; Celery</text>
+  </a>
+
+  <a href="frontend.html">
+  <rect x="230" y="90" width="165" height="60" rx="8" fill="#5ba4e610" stroke="#5ba4e6" stroke-width="1.5"/>
+  <text x="245" y="112" fill="#5ba4e6" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">chakra-frontend</text>
+  <text x="245" y="128" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Next.js &middot; PM2:3000</text>
+  </a>
+
+  <rect x="45" y="165" width="105" height="40" rx="6" fill="#9b7be810" stroke="#9b7be8" stroke-width="1"/>
+  <text x="58" y="185" fill="#9b7be8" font-family="IBM Plex Mono, monospace" font-size="8" font-weight="600">PostgreSQL</text>
+  <text x="58" y="196" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="7">:5432</text>
+
+  <rect x="165" y="165" width="95" height="40" rx="6" fill="#44c8cc10" stroke="#44c8cc" stroke-width="1"/>
+  <text x="177" y="185" fill="#44c8cc" font-family="IBM Plex Mono, monospace" font-size="8" font-weight="600">Memcached</text>
+  <text x="177" y="196" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="7">:11211</text>
+
+  <rect x="275" y="165" width="95" height="40" rx="6" fill="#e478a810" stroke="#e478a8" stroke-width="1"/>
+  <text x="287" y="185" fill="#e478a8" font-family="IBM Plex Mono, monospace" font-size="8" font-weight="600">RabbitMQ</text>
+  <text x="287" y="196" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="7">:5672</text>
+
+  <!-- Host processes -->
+  <rect x="30" y="270" width="380" height="80" rx="10" fill="#181c2680" stroke="#e85c5c" stroke-width="1.2"/>
+  <text x="48" y="291" fill="#e85c5c" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">HOST PROCESSES (tmux)</text>
+
+  <a href="transpiler.html">
+  <rect x="45" y="302" width="170" height="38" rx="6" fill="#e85c5c10" stroke="#e85c5c" stroke-width="1.2"/>
+  <text x="60" y="320" fill="#e85c5c" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">Flask + chakra-core</text>
+  <text x="60" y="332" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="7">Scala transpiler &middot; :5000</text>
+  </a>
+
+  <rect x="230" y="302" width="170" height="38" rx="6" fill="#f0a03010" stroke="#f0a030" stroke-width="1.2"/>
+  <text x="245" y="320" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">Nginx</text>
+  <text x="245" y="332" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="7">chakra.channeli.in &middot; :443</text>
+
+  <!-- Filesystem -->
+  <rect x="30" y="365" width="555" height="130" rx="10" fill="#181c2680" stroke="#3a4556" stroke-width="1"/>
+  <text x="48" y="386" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">FILESYSTEM</text>
+
+  <text x="48" y="408" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="9">website/XML/</text>
+  <text x="188" y="408" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Source content &middot; 20 GB &middot; 15,280 images</text>
+
+  <text x="48" y="426" fill="#4cc98a" font-family="IBM Plex Mono, monospace" font-size="9">website/HTML/</text>
+  <text x="192" y="426" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Published output &middot; synced to root2</text>
+
+  <text x="48" y="444" fill="#5ba4e6" font-family="IBM Plex Mono, monospace" font-size="9">media_files/preview/</text>
+  <text x="218" y="444" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Preview images &middot; cleaned hourly</text>
+
+  <text x="48" y="462" fill="#9b7be8" font-family="IBM Plex Mono, monospace" font-size="9">reverse_proxy_configurations/</text>
+  <text x="277" y="462" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Generated nginx configs</text>
+
+  <text x="48" y="480" fill="#e478a8" font-family="IBM Plex Mono, monospace" font-size="9">website/JoshUsers/</text>
+  <text x="210" y="480" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Josh user websites &middot; synced to root2</text>
+
+  <!-- lsyncd arrows -->
+  <line x1="595" y1="120" x2="650" y2="120" stroke="#f0a030" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="595" y1="160" x2="650" y2="160" stroke="#f0a030" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="595" y1="200" x2="650" y2="200" stroke="#f0a030" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="595" y1="240" x2="650" y2="240" stroke="#f0a030" stroke-width="2" stroke-dasharray="6 4"/>
+  <polygon points="648,115 658,120 648,125" fill="#f0a030"/>
+  <polygon points="648,155 658,160 648,165" fill="#f0a030"/>
+  <polygon points="648,195 658,200 648,205" fill="#f0a030"/>
+  <polygon points="648,235 658,240 648,245" fill="#f0a030"/>
+
+  <rect x="600" y="100" width="55" height="155" rx="6" fill="none" stroke="#f0a03040" stroke-width="1"/>
+  <text x="608" y="180" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="8" font-weight="600" transform="rotate(-90,620,180)">lsyncd rsync</text>
+
+  <!-- root2 / edith -->
+  <rect x="660" y="10" width="290" height="500" rx="14" fill="#12151c" stroke="#3a4556" stroke-width="1"/>
+  <text x="680" y="36" fill="#9b7be8" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600">root2 / edith</text>
+  <text x="680" y="50" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Static File Server (public-facing)</text>
+
+  <a href="nginx.html">
+  <rect x="675" y="70" width="260" height="60" rx="8" fill="#4cc98a10" stroke="#4cc98a" stroke-width="1.5"/>
+  <text x="690" y="92" fill="#4cc98a" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">Nginx :443</text>
+  <text x="690" y="108" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">18+ subdomain server blocks</text>
+  <text x="690" y="122" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">cec &middot; ece &middot; gate &middot; faculty &middot; ...</text>
+  </a>
+
+  <rect x="675" y="145" width="260" height="50" rx="8" fill="#e88c3e10" stroke="#e88c3e" stroke-width="1"/>
+  <text x="690" y="167" fill="#e88c3e" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">inotifywait</text>
+  <text x="690" y="183" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Watches /etc/nginx/ &rarr; hot reload</text>
+
+  <rect x="675" y="210" width="260" height="160" rx="8" fill="#181c2680" stroke="#3a4556" stroke-width="1"/>
+  <text x="690" y="232" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="9" font-weight="600">FILESYSTEM</text>
+
+  <text x="690" y="255" fill="#4cc98a" font-family="IBM Plex Mono, monospace" font-size="9">/home/root2/new_website/</text>
+  <text x="690" y="272" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">70 GB &middot; Published HTML + assets</text>
+  <text x="690" y="289" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">Departments/ Centres/ Schools/ ...</text>
+
+  <text x="690" y="315" fill="#44c8cc" font-family="IBM Plex Mono, monospace" font-size="9">/home/root2/s3bucket/</text>
+  <text x="690" y="332" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">S3 mount &middot; Faculty websites</text>
+
+  <text x="690" y="355" fill="#9b7be8" font-family="IBM Plex Mono, monospace" font-size="9">/etc/nginx/sites-enabled/</text>
+  <text x="690" y="362" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="7">Synced subdomain configs</text>
+
+  <!-- User -->
+  <rect x="720" y="415" width="180" height="45" rx="8" fill="#f0a03015" stroke="#f0a030" stroke-width="1.5"/>
+  <text x="810" y="436" text-anchor="middle" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="10" font-weight="600">Public Users</text>
+  <text x="810" y="450" text-anchor="middle" fill="#6e7a8d" font-family="IBM Plex Mono, monospace" font-size="8">cec.iitr.ac.in &middot; ece.iitr.ac.in</text>
+  <line x1="810" y1="370" x2="810" y2="415" stroke="#f0a030" stroke-width="1.5"/>
+  <polygon points="805,413 810,420 815,413" fill="#f0a030"/>
+</svg>
+
+<div class="legend">
+  <div class="legend-item"><div class="ld" style="background:#4cc98a"></div>Django / Nginx</div>
+  <div class="legend-item"><div class="ld" style="background:#5ba4e6"></div>Frontend</div>
+  <div class="legend-item"><div class="ld" style="background:#e85c5c"></div>Transpiler</div>
+  <div class="legend-item"><div class="ld" style="background:#f0a030"></div>lsyncd / Public</div>
+  <div class="legend-item"><div class="ld" style="background:#9b7be8"></div>Database / Config</div>
+  <div class="legend-item"><div class="ld" style="background:#44c8cc"></div>Cache / S3</div>
+</div>
+<p style="margin-top:12px;font-size:.8rem;color:var(--text-dim);">Click any component box to jump to its deep-dive page.</p>
+</div>
+
+<!-- Key Concepts -->
+<div class="card gc fade-in fade-in-d2">
+<h2>Key Concepts</h2>
+<div class="g2">
+  <div>
+    <h3>Component CMS</h3>
+    <p>Editors don't write HTML. They compose pages from <strong>UI-kit components</strong> (sliders, tables, cards, etc.) in a visual editor. The editor saves component trees as <strong>XML</strong>. A Scala transpiler converts XML to static HTML using rules defined in <code>components.json</code>.</p>
+  </div>
+  <div>
+    <h3>XML &rarr; HTML Pipeline</h3>
+    <p>Source XML lives in <code>website/XML/</code>. When an editor publishes, the <strong>transpiler</strong> converts XML to HTML, stores it in <code>website/HTML/</code>, and <strong>lsyncd</strong> automatically rsyncs it to root2 where nginx serves it to the public.</p>
+  </div>
+  <div>
+    <h3>Two-Server Architecture</h3>
+    <p><strong>root1 (bifrost)</strong> runs all application logic in Docker. <strong>root2 (edith)</strong> is a pure static nginx server. They're connected by <strong>lsyncd</strong> &mdash; 5 continuous rsync streams over SSH that keep published content, Josh user sites, and nginx configs in sync.</p>
+  </div>
+  <div>
+    <h3>ConfMan</h3>
+    <p>The <strong>Configuration Manager</strong> generates nginx reverse proxy configs dynamically. When admins approve a subdomain (like cec.iitr.ac.in), ConfMan writes an nginx server block, lsyncd pushes it to root2, and inotifywait auto-reloads nginx. Zero manual config.</p>
+  </div>
+</div>
+</div>
+
+<!-- Stats -->
+<div class="card gd fade-in fade-in-d3">
+<h2>By the Numbers</h2>
+<p style="margin-bottom:16px;">Production metrics as of April 2026, verified from live servers.</p>
+<div class="g4">
+  <div class="stat"><div class="v">15,280</div><div class="l">XML asset files</div></div>
+  <div class="stat"><div class="v">11,869</div><div class="l">HTML asset files</div></div>
+  <div class="stat"><div class="v">95 GB</div><div class="l">website/ on root1</div></div>
+  <div class="stat"><div class="v">70 GB</div><div class="l">new_website/ on root2</div></div>
+  <div class="stat"><div class="v">6</div><div class="l">Docker containers</div></div>
+  <div class="stat"><div class="v">18+</div><div class="l">subdomain sites</div></div>
+  <div class="stat"><div class="v">5</div><div class="l">lsyncd streams</div></div>
+  <div class="stat"><div class="v">320+</div><div class="l">UI components</div></div>
+</div>
+</div>
+
+<!-- Section Index -->
+<h2 id="section-index" style="margin-top:40px;">Section Index</h2>
+<div class="g3">
+  <a href="system-overview.html" class="hero-card"><span class="card-icon" style="color:var(--blue);">&#9670;</span><h3 style="color:var(--blue)">System Overview</h3><p>Complete architecture diagram, Docker mounts, process management, and how all pieces connect.</p></a>
+  <a href="two-servers.html" class="hero-card"><span class="card-icon" style="color:var(--violet);">&#9670;</span><h3 style="color:var(--violet)">Two-Server Setup</h3><p>root1 (bifrost) and root2 (edith). lsyncd config, SSH keys, sync streams, inotifywait.</p></a>
+  <a href="image-lifecycle.html" class="hero-card"><span class="card-icon" style="color:var(--orange);">&#9670;</span><h3 style="color:var(--orange)">Image Lifecycle</h3><p>Upload, preview, publish, sync, delivery. How images flow through 3 copies across 2 servers.</p></a>
+  <a href="deployment.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Deployment Guide</h3><p>Jenkins jobs, manual fallbacks, Docker restart, transpiler rebuild, and everything-went-wrong recovery.</p></a>
+  <a href="backend.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Backend (Django)</h3><p>Gunicorn, Daphne, Celery, supervisord. Environment variables, middleware, URL routing.</p></a>
+  <a href="transpiler.html" class="hero-card"><span class="card-icon" style="color:var(--red);">&#9670;</span><h3 style="color:var(--red)">Transpiler (Core)</h3><p>Scala binary, Flask wrapper, components.json, replaceAssets, ImageSpec, the preview/publish split.</p></a>
+  <a href="nginx.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Nginx &amp; Routing</h3><p>How chakra.channeli.in routes on root1 vs. how subdomain.iitr.ac.in serves on root2.</p></a>
+  <a href="lsyncd.html" class="hero-card"><span class="card-icon" style="color:var(--amber);">&#9670;</span><h3 style="color:var(--amber)">lsyncd &amp; Sync</h3><p>The 5 rsync streams, lsyncd.conf.lua, SSH key auth, what syncs and what doesn't.</p></a>
+  <a href="confman.html" class="hero-card"><span class="card-icon" style="color:var(--violet);">&#9670;</span><h3 style="color:var(--violet)">ConfMan</h3><p>Dynamic reverse proxy config generation. Subdomain approval workflow, template rendering.</p></a>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>
