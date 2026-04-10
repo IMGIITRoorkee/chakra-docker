@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backend (Django) — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Backend (Django)</span></div>
+
+<h1>Backend <em>(Django)</em></h1>
+<p class="page-subtitle">Django application server &mdash; APIs, auth, file management, and publish workflow</p>
+
+<!-- ══════════ OVERVIEW ══════════ -->
+<div class="card ga">
+<h2>Container Overview</h2>
+<p style="margin-bottom:16px;">The backend runs in a Docker container using the <code>chakra-backend:latest</code> image. Inside the container, <strong>supervisord</strong> manages three long-running processes that together handle HTTP requests, WebSocket connections, and background tasks.</p>
+
+<h3>Startup Command</h3>
+<div class="code-block"><span class="kw">source</span> chakra_backend/.env <span class="kw">&amp;&amp;</span> supervisord <span class="str">-c</span> /supervisord.conf</div>
+</div>
+
+<!-- ══════════ PROCESS MANAGEMENT ══════════ -->
+<div class="card gb">
+<h2>Process Management (supervisord)</h2>
+<p style="margin-bottom:16px;">Supervisord keeps all three processes running and restarts them on failure. Each process binds to a different port on the host network.</p>
+
+<div class="g3">
+  <div class="step"><div class="n">HTTP</div><h4>Gunicorn</h4><p>Port <strong>8000</strong>. 5 workers, <code>gthread</code> worker class, 120s timeout. Handles all Django REST API traffic.</p></div>
+  <div class="step"><div class="n">WS</div><h4>Daphne</h4><p>Port <strong>8001</strong>. ASGI server for WebSocket connections. Powers real-time editor features.</p></div>
+  <div class="step"><div class="n">BG</div><h4>Celery</h4><p>Background task worker. Uses <strong>RabbitMQ</strong> as message broker. Runs scheduled cron jobs and async tasks.</p></div>
+</div>
+</div>
+
+<!-- ══════════ DJANGO APPS ══════════ -->
+<div class="card gc">
+<h2>Key Django Apps</h2>
+<p style="margin-bottom:16px;">The backend is organized into several Django apps, each responsible for a distinct area of functionality.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>App</th><th>Purpose</th><th>Key Features</th></tr>
+  <tr><td><code>generator</code></td><td>Page management</td><td>Publish, preview, image upload, XML/HTML pipeline</td></tr>
+  <tr><td><code>filemanager</code></td><td>File &amp; folder CRUD</td><td>Zip upload, folder download, directory browsing</td></tr>
+  <tr><td><code>chakra_auth</code></td><td>Authentication</td><td>OAuth via <strong>channeli.in</strong>, session management</td></tr>
+  <tr><td><code>confman</code></td><td>Reverse proxy config</td><td>Generates nginx configs for subdomains and short URLs</td></tr>
+  <tr><td><code>website</code></td><td>Page rendering</td><td>Serves rendered pages, template management</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ URL ROUTING ══════════ -->
+<div class="card gd">
+<h2>URL Routing</h2>
+<p style="margin-bottom:16px;">Nginx on root1 routes incoming requests to the appropriate backend process based on URL prefix.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>URL Pattern</th><th>Destination</th><th>Process</th></tr>
+  <tr><td><code>/chakra_auth/*</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
+  <tr><td><code>/generator/*</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
+  <tr><td><code>/filemanager/*</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
+  <tr><td><code>/ws/*</code></td><td>ASGI consumers</td><td>Daphne :8001</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ ENV VARS ══════════ -->
+<div class="card ge">
+<h2>Key Environment Variables</h2>
+<p style="margin-bottom:16px;">Configured in <code>chakra_backend/.env</code> (created from <code>stencil.env</code>). Loaded by Django at startup.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Variable</th><th>Example</th><th>Purpose</th></tr>
+  <tr><td><code>PERSONAL_ROOT</code></td><td><code>/website</code></td><td>Base path for all website content</td></tr>
+  <tr><td><code>XML_ROOT_URL</code></td><td><code>/website/XML/</code></td><td>XML source content root</td></tr>
+  <tr><td><code>HTML_ROOT_URL</code></td><td><code>/website/HTML/</code></td><td>Published HTML output root</td></tr>
+  <tr><td><code>PREVIEW_IMAGE_PATH</code></td><td><code>/media_files/preview</code></td><td>Temporary preview image storage</td></tr>
+  <tr><td><code>SERVER_URL</code></td><td><code>http://127.0.0.1:5000</code></td><td>Flask transpiler endpoint</td></tr>
+  <tr><td><code>TRANSPILER_PATH</code></td><td>Path to chakra-core dir</td><td>Working directory for Scala binary</td></tr>
+  <tr><td><code>MEDIA_ROOT</code></td><td><code>/media_files/</code></td><td>Django media root (nginx serves as /media)</td></tr>
+  <tr><td><code>SECRET_FLASK</code></td><td>(secret)</td><td>Auth token for transpiler API</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ CELERY CRON ══════════ -->
+<div class="card ga">
+<h2>Celery Cron Jobs</h2>
+<p style="margin-bottom:16px;">Celery Beat schedules periodic tasks via RabbitMQ. These run automatically without manual intervention.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Schedule</th><th>Function</th><th>Purpose</th></tr>
+  <tr><td>Every 60 min</td><td><code>generator.cron.my_scheduled_job</code></td><td>Runs <code>tmp_clear.sh</code> &mdash; deletes preview images older than 1 day</td></tr>
+  <tr><td>Every 720 min</td><td><code>generator.cron.notice_list_publish_cron</code></td><td>Auto-publishes notice list pages</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ LOGS ══════════ -->
+<div class="card gb">
+<h2>Logging</h2>
+<p style="margin-bottom:16px;">All process logs are written to <code>/web_server_logs/</code> inside the container (bind-mounted to host).</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Log File</th><th>Source</th></tr>
+  <tr><td><code>/web_server_logs/gunicorn.log</code></td><td>Gunicorn HTTP server</td></tr>
+  <tr><td><code>/web_server_logs/daphne.log</code></td><td>Daphne WebSocket server</td></tr>
+  <tr><td><code>/web_server_logs/celery.log</code></td><td>Celery background worker</td></tr>
+  <tr><td><code>/web_server_logs/supervisord.log</code></td><td>Supervisord process manager</td></tr>
+</table>
+</div>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Two-Server Setup — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Two-Server Setup</span></div>
+
+<h1>Two-Server <em>Setup</em></h1>
+<p class="page-subtitle">root1 (bifrost) + root2 (edith) &mdash; connected by lsyncd over SSH</p>
+
+<div class="card gb">
+<h2>Why Two Servers?</h2>
+<p>Chakra separates <strong>application logic</strong> from <strong>public-facing delivery</strong>. root1 handles all CMS operations (editing, preview, publish, database). root2 is a hardened static file server that only serves pre-built HTML to the public internet.</p>
+<ul style="margin-top:12px;">
+  <li>root2 has <strong>no application code, no database, no Docker</strong> &mdash; minimal attack surface</li>
+  <li>root1 can be restarted/updated without affecting live websites (lsyncd catches up)</li>
+  <li>Different security policies per server &mdash; root2 only needs ports 80/443 open</li>
+</ul>
+</div>
+
+<div class="card ga">
+<h2>root1 / bifrost (192.168.121.230)</h2>
+<p style="margin-bottom:16px;"><strong>Application server.</strong> Runs all logic, stores all source data.</p>
+
+<h3>What Runs Here</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Process</th><th>How</th><th>Port</th><th>Purpose</th></tr>
+  <tr><td>Django backend</td><td>Docker</td><td>8000 / 8001</td><td>Gunicorn + Daphne + Celery under supervisord</td></tr>
+  <tr><td>Next.js frontend</td><td>Docker</td><td>3000</td><td>Editor UI (PM2)</td></tr>
+  <tr><td>PostgreSQL</td><td>Docker</td><td>5432</td><td>Primary database</td></tr>
+  <tr><td>Memcached</td><td>Docker</td><td>11211</td><td>Cache layer</td></tr>
+  <tr><td>RabbitMQ</td><td>Docker</td><td>5672</td><td>Celery message broker</td></tr>
+  <tr><td>LibreTranslate</td><td>Docker</td><td>13338</td><td>Hindi translation</td></tr>
+  <tr><td>Flask + chakra-core</td><td>tmux</td><td>5000</td><td>Scala transpiler</td></tr>
+  <tr><td>Nginx</td><td>Host</td><td>443</td><td>chakra.channeli.in</td></tr>
+  <tr><td>lsyncd</td><td>System service</td><td>&mdash;</td><td>Continuous rsync to root2</td></tr>
+</table>
+</div>
+
+<h3>Filesystem</h3>
+<div class="code-block"><span class="path">/home/root1/chakra-docker/codebase/</span>
+  <span class="path">chakra-backend/</span>
+    <span class="path">website/</span>
+      <span class="str">XML/</span>          <span class="comment"># 20 GB, 15,280 asset files (source)</span>
+      <span class="str">HTML/</span>         <span class="comment"># Published output (synced to root2)</span>
+      <span class="str">JoshUsers/</span>    <span class="comment"># Josh websites (synced to root2)</span>
+    <span class="path">media_files/</span>
+      <span class="str">preview/</span>      <span class="comment"># Temp preview images (cleaned hourly)</span>
+    <span class="path">reverse_proxy_configurations/</span>
+      <span class="str">subdomains/</span>   <span class="comment"># Nginx configs (synced)</span>
+      <span class="str">shorturls/</span>    <span class="comment"># Short URL configs (synced)</span>
+      <span class="str">josh-subdomains/</span>
+  <span class="path">chakra-core/</span>
+    <span class="str">components.json</span> <span class="comment"># Transpiler config</span>
+  <span class="path">chakra-frontend/</span>
+  <span class="path">chakra-library/</span></div>
+
+<h3>Cron Jobs</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Schedule</th><th>Script</th><th>Purpose</th></tr>
+  <tr><td>Weekly (Sun midnight)</td><td><code>database_backup.sh</code></td><td>PostgreSQL dump to S3</td></tr>
+  <tr><td>Daily 3 AM</td><td><code>incremental_backup_to_aws_script.sh</code></td><td>Incremental to S3</td></tr>
+  <tr><td>Hourly (Celery)</td><td><code>tmp_clear.sh</code></td><td>Clean preview images &gt; 1 day</td></tr>
+  <tr><td>Every 12h (Celery)</td><td><code>notice_list_publish_cron</code></td><td>Auto-publish notices</td></tr>
+</table>
+</div>
+</div>
+
+<div class="card gc">
+<h2>root2 / edith (192.168.121.188)</h2>
+<p style="margin-bottom:16px;"><strong>Static file server.</strong> No app logic. Serves published websites to the public.</p>
+
+<h3>What Runs Here</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Process</th><th>Purpose</th></tr>
+  <tr><td>Nginx (:443 SSL)</td><td>18+ subdomain server blocks serving static HTML</td></tr>
+  <tr><td>inotifywait</td><td>Watches <code>/etc/nginx/</code> &rarr; triggers <code>hot-nginx-reload.sh</code></td></tr>
+</table>
+</div>
+<p style="margin-top:10px;"><strong>That's it.</strong> No Docker, no database, no cron, no application code.</p>
+
+<h3>Filesystem</h3>
+<div class="code-block"><span class="path">/home/root2/</span>
+  <span class="path">new_website/</span>             <span class="comment"># 70 GB, synced from root1</span>
+    <span class="str">Departments/</span>  <span class="str">Centres/</span>  <span class="str">Schools/</span>
+    <span class="str">Josh Users/</span>  <span class="str">Admissions/</span>  <span class="str">Administration/</span>
+  <span class="path">s3bucket/</span>
+    <span class="str">public/Websites/</span>       <span class="comment"># Faculty personal websites</span>
+
+<span class="path">/etc/nginx/</span>
+  <span class="str">sites-enabled/</span>           <span class="comment"># cec.conf, ece.conf, gate.conf ...</span>
+  <span class="str">sites-available/subdomains/</span>    <span class="comment"># Synced from root1</span>
+  <span class="str">conf.d/includes/</span>               <span class="comment"># Faculty routes (synced)</span></div>
+
+<h3>Subdomain Sites</h3>
+<div class="g4" style="margin-top:10px;">
+  <div><code>cec.iitr.ac.in</code></div>
+  <div><code>ece.iitr.ac.in</code></div>
+  <div><code>gate.iitr.ac.in</code></div>
+  <div><code>faculty.iitr.ac.in</code></div>
+  <div><code>ncc.iitr.ac.in</code></div>
+  <div><code>knox.iitr.ac.in</code></div>
+  <div><code>tih.iitr.ac.in</code></div>
+  <div><code>drc.iitr.ac.in</code></div>
+  <div><code>asme.iitr.ac.in</code></div>
+  <div><code>bwrl.iitr.ac.in</code></div>
+  <div><code>miess.iitr.ac.in</code></div>
+  <div style="color:var(--text-dim);">...and more</div>
+</div>
+</div>
+
+<div class="card gd">
+<h2>The Connection: lsyncd</h2>
+<p style="margin-bottom:16px;">Config: <code>/etc/lsyncd/lsyncd.conf.lua</code> on root1. SSH key: <code>/home/root1/.ssh/website-key</code>.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>#</th><th>Source (root1)</th><th>Target (root2)</th><th>Content</th></tr>
+  <tr><td>1</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>Published pages + assets/</td></tr>
+  <tr><td>2</td><td><code>website/JoshUsers/</code></td><td><code>new_website/Josh Users/</code></td><td>Josh user websites</td></tr>
+  <tr><td>3</td><td><code>reverse_proxy.../subdomains/</code></td><td><code>/etc/nginx/sites-available/subdomains/</code></td><td>Subdomain configs</td></tr>
+  <tr><td>4</td><td><code>reverse_proxy.../shorturls/</code></td><td><code>/etc/nginx/conf.d/includes/</code></td><td>Short URL routes</td></tr>
+  <tr><td>5</td><td><code>reverse_proxy.../josh-subdomains/</code></td><td><code>/etc/nginx/sites-available/josh-subdomains/</code></td><td>Josh subdomain configs</td></tr>
+</table>
+</div>
+
+<h3>What Does NOT Sync</h3>
+<ul>
+  <li><code>website/XML/</code> &mdash; source content stays on root1 only</li>
+  <li><code>media_files/</code> &mdash; preview images served from root1 via chakra.channeli.in</li>
+  <li>Database, Docker volumes, application code</li>
+</ul>
+
+<h3>Auto-Reload Flow</h3>
+<p>When ConfMan generates a new nginx config on root1:</p>
+<ol>
+  <li>Config written to <code>reverse_proxy_configurations/subdomains/</code></li>
+  <li>lsyncd detects change &rarr; rsyncs to root2 <code>/etc/nginx/sites-available/</code></li>
+  <li>inotifywait on root2 detects new file &rarr; runs <code>hot-nginx-reload.sh</code></li>
+  <li>Nginx reloads with zero downtime</li>
+</ol>
+
+<h3>Proxy Pass Exceptions</h3>
+<p>A few faculty profile routes on root2 proxy back to root1 for dynamic rendering:</p>
+<div class="code-block"><span class="comment"># faculty-website-route.conf on root2</span>
+location <span class="str">"/~PH/Faculty_Name"</span> {
+    proxy_pass <span class="str">http://192.168.121.230/departments/PH/pages/...</span>;
+}</div>
+</div>
+
+<div class="card ga">
+<h2>Network</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Server</th><th>IP</th><th>Hostname</th><th>Key Ports</th></tr>
+  <tr><td>root1</td><td>192.168.121.230</td><td>bifrost</td><td>443, 8000, 8001, 3000, 5000, 5432</td></tr>
+  <tr><td>root2</td><td>192.168.121.188</td><td>edith</td><td>443, 22 (SSH for lsyncd)</td></tr>
+</table>
+</div>
+<p style="margin-top:10px;">Both on same LAN. lsyncd uses SSH key auth over internal network. Both mount S3 buckets.</p>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

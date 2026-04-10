@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lsyncd & Sync — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>lsyncd &amp; Sync</span></div>
+
+<h1>lsyncd &amp; <em>Sync</em></h1>
+<p class="page-subtitle">Live Syncing Daemon &mdash; continuous rsync on file changes from root1 to root2</p>
+
+<!-- ══════════ OVERVIEW ══════════ -->
+<div class="card ga">
+<h2>What is lsyncd?</h2>
+<p style="margin-bottom:16px;"><strong>lsyncd</strong> (Live Syncing Daemon) watches directories on root1 for file changes and triggers <code>rsync</code> to push those changes to root2 in near-real-time. It is the backbone of the two-server architecture &mdash; ensuring published content and nginx configs reach the static file server automatically.</p>
+
+<div class="g2">
+  <div>
+    <h3>Configuration</h3>
+    <ul>
+      <li><strong>Config file:</strong> <code>/etc/lsyncd/lsyncd.conf.lua</code> on root1</li>
+      <li><strong>Mode:</strong> <code>default.rsync</code></li>
+      <li><strong>SSH key:</strong> <code>/home/root1/.ssh/website-key</code></li>
+      <li><strong>Known hosts:</strong> Specified in config for strict host checking</li>
+    </ul>
+  </div>
+  <div>
+    <h3>Logging</h3>
+    <ul>
+      <li><strong>Log file:</strong> <code>/var/log/lsyncd/lsyncd.log</code></li>
+      <li><strong>Status file:</strong> <code>/var/log/lsyncd/lsyncd.status</code></li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ SYNC STREAMS ══════════ -->
+<div class="card gb">
+<h2>5 Sync Streams</h2>
+<p style="margin-bottom:16px;">lsyncd maintains 5 independent sync streams, each watching a different directory on root1 and pushing changes to a corresponding directory on root2.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>#</th><th>Source (root1)</th><th>Target (root2)</th><th>What Syncs</th></tr>
+  <tr><td>1</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>Published pages + assets/ folders</td></tr>
+  <tr><td>2</td><td><code>website/JoshUsers/</code></td><td><code>/home/root2/new_website/Josh Users/</code></td><td>Josh user websites</td></tr>
+  <tr><td>3</td><td><code>reverse_proxy_configurations/subdomains/</code></td><td><code>/etc/nginx/sites-available/subdomains/</code></td><td>Subdomain nginx server block configs</td></tr>
+  <tr><td>4</td><td><code>reverse_proxy_configurations/shorturls/</code></td><td><code>/etc/nginx/conf.d/includes/</code></td><td>Short URL location blocks</td></tr>
+  <tr><td>5</td><td><code>reverse_proxy_configurations/josh-subdomains/</code></td><td><code>/etc/nginx/sites-available/josh-subdomains/</code></td><td>Josh subdomain configs</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ WHAT DOES NOT SYNC ══════════ -->
+<div class="card gc">
+<h2>What Does NOT Sync</h2>
+<p style="margin-bottom:16px;">Not everything on root1 is pushed to root2. Several directories and resources stay on root1 only.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Resource</th><th>Location</th><th>Why Not Synced</th></tr>
+  <tr><td><code>website/XML/</code></td><td>root1 only</td><td>Source XML is only needed for editing and transpilation, not serving</td></tr>
+  <tr><td><code>media_files/</code></td><td>root1 only</td><td>Preview images served directly from root1 via <code>chakra.channeli.in/media</code></td></tr>
+  <tr><td>PostgreSQL database</td><td>root1 Docker volume</td><td>Application database only needed by Django on root1</td></tr>
+  <tr><td>Docker volumes</td><td>root1 only</td><td>No Docker containers run on root2</td></tr>
+</table>
+</div>
+<p style="margin-top:12px;"><strong>Key insight:</strong> Only <em>published</em> HTML reaches root2. Preview images are served from root1 directly via <code>chakra.channeli.in</code>.</p>
+</div>
+
+<!-- ══════════ INOTIFYWAIT ══════════ -->
+<div class="card gd">
+<h2>Auto-Reload on root2 (inotifywait)</h2>
+<p style="margin-bottom:16px;">When lsyncd pushes new nginx configs to root2, they need to take effect without manual intervention. This is handled by <strong>inotifywait</strong>.</p>
+
+<div class="code-block"><span class="comment"># On root2: watches for nginx config changes</span>
+<span class="fn">inotifywait</span> <span class="str">--monitor</span> <span class="str">--recursive</span> <span class="path">/etc/nginx/</span>
+    <span class="kw">&rarr;</span> <span class="fn">hot-nginx-reload.sh</span>
+    <span class="kw">&rarr;</span> nginx <span class="str">-s reload</span></div>
+
+<p style="margin-top:12px;">The <code>inotifywait</code> process watches <code>/etc/nginx/</code> recursively. When any file is created, modified, or deleted, it triggers <code>hot-nginx-reload.sh</code>, which runs <code>nginx -s reload</code> to apply the new configuration without downtime.</p>
+</div>
+
+<!-- ══════════ CONFIG EXAMPLE ══════════ -->
+<div class="card ge">
+<h2>Configuration Example</h2>
+<p style="margin-bottom:16px;">Each sync stream in <code>lsyncd.conf.lua</code> follows this pattern:</p>
+
+<div class="code-block"><span class="comment">-- /etc/lsyncd/lsyncd.conf.lua</span>
+<span class="fn">settings</span> {
+    logfile = <span class="str">"/var/log/lsyncd/lsyncd.log"</span>,
+    statusFile = <span class="str">"/var/log/lsyncd/lsyncd.status"</span>,
+}
+
+<span class="fn">sync</span> {
+    default.rsync,
+    source = <span class="str">"/path/to/source/"</span>,
+    target = <span class="str">"root2@192.168.121.188:/path/to/target/"</span>,
+    rsync = {
+        rsh = <span class="str">"/usr/bin/ssh -i /home/root1/.ssh/website-key"</span>,
+    }
+}</div>
+</div>
+
+<!-- ══════════ TROUBLESHOOTING ══════════ -->
+<div class="card ga">
+<h2>Troubleshooting</h2>
+<p style="margin-bottom:16px;">When files are not reaching root2 as expected, check these common issues:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>Command / Action</th><th>What to Look For</th></tr>
+  <tr><td>lsyncd log</td><td><code>tail -f /var/log/lsyncd/lsyncd.log</code></td><td>Errors, connection failures, permission denied messages</td></tr>
+  <tr><td>SSH key permissions</td><td><code>ls -la /home/root1/.ssh/website-key</code></td><td>Should be <code>600</code> (owner read/write only)</td></tr>
+  <tr><td>Manual rsync test</td><td><code>rsync -avz -e "ssh -i /home/root1/.ssh/website-key" source/ target/</code></td><td>Verify rsync works independently of lsyncd</td></tr>
+  <tr><td>lsyncd status</td><td><code>cat /var/log/lsyncd/lsyncd.status</code></td><td>Number of pending syncs, last sync timestamps</td></tr>
+  <tr><td>lsyncd process</td><td><code>systemctl status lsyncd</code></td><td>Is the daemon running?</td></tr>
+</table>
+</div>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

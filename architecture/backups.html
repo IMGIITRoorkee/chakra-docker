@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backups &amp; S3 — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Backups &amp; S3</span></div>
+
+<h1>Backups <em>&amp; S3</em></h1>
+<p class="page-subtitle">Database dumps, incremental backups, and S3 mounts on both servers</p>
+
+<div class="card ga">
+<h2>Backup Schedule</h2>
+<p style="margin-bottom:16px;">All backups run from root1 (bifrost) via cron. Destinations are S3 buckets mounted on both servers.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>What</th><th>Script</th><th>Schedule</th><th>Destination</th></tr>
+  <tr><td>PostgreSQL full dump</td><td><code>database_backup.sh</code></td><td>Weekly (Sunday midnight)</td><td>S3 bucket</td></tr>
+  <tr><td>Incremental data backup</td><td><code>incremental_backup_to_aws_script.sh</code></td><td>Daily (3 AM)</td><td>S3 bucket</td></tr>
+  <tr><td>Published content</td><td>lsyncd (continuous)</td><td>Real-time</td><td>root2 filesystem (acts as a live copy)</td></tr>
+  <tr><td>Preview image cleanup</td><td><code>tmp_clear.sh</code> (Celery)</td><td>Every 60 min</td><td>Deletes files &gt; 1 day from <code>media_files/preview/</code></td></tr>
+</table>
+</div>
+</div>
+
+<div class="card gb">
+<h2>S3 Mounts</h2>
+<p style="margin-bottom:16px;">Both servers mount S3 buckets via <strong>s3fs</strong> (FUSE-based filesystem).</p>
+
+<div class="g2">
+  <div>
+    <h3>root1 (bifrost)</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Mount Point</th><th>Contents</th></tr>
+      <tr><td><code>/home/root1/s3bucket</code></td><td>Shared S3 bucket &mdash; backups, database dumps</td></tr>
+      <tr><td><code>/home/root1/s3bucket2</code></td><td>Secondary S3 bucket &mdash; incremental backups</td></tr>
+    </table>
+    </div>
+  </div>
+  <div>
+    <h3>root2 (edith)</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Mount Point</th><th>Contents</th></tr>
+      <tr><td><code>/home/root2/s3bucket</code></td><td>Shared S3 bucket (256 TB virtual)</td></tr>
+    </table>
+    </div>
+    <p style="margin-top:8px;">Key paths on root2's S3 mount:</p>
+    <ul>
+      <li><code>public/Websites/</code> &mdash; Faculty personal websites (served by nginx)</li>
+      <li><code>chakra-backups/</code> &mdash; Database backup archives</li>
+      <li><code>incremantal-backups/</code> &mdash; Incremental data backups</li>
+    </ul>
+  </div>
+</div>
+</div>
+
+<div class="card gc">
+<h2>Database Backup</h2>
+<p style="margin-bottom:16px;">PostgreSQL runs in Docker container <code>chakra-docker_database_1</code>. Weekly full dumps are stored in S3.</p>
+
+<h3>How It Works</h3>
+<ol>
+  <li>Cron triggers <code>/home/root1/database_backup.sh</code> on Sunday midnight</li>
+  <li>Script runs <code>pg_dump</code> inside the Docker container</li>
+  <li>Dump file is written to the S3 mount at <code>/home/root1/s3bucket/chakra-backups/</code></li>
+  <li>Old backups are retained (no automatic rotation observed)</li>
+</ol>
+
+<h3>Manual Backup</h3>
+<div class="code-block"><span class="comment"># Run pg_dump inside the database container</span>
+docker exec chakra-docker_database_1 \
+  pg_dump -U postgres <span class="str">chakradb</span> &gt; <span class="path">backup_$(date +%Y%m%d).sql</span></div>
+</div>
+
+<div class="card gd">
+<h2>Incremental Backup</h2>
+<p style="margin-bottom:16px;">Daily incremental backups capture changed files across the codebase and website content.</p>
+
+<h3>How It Works</h3>
+<ol>
+  <li>Cron triggers <code>/home/root1/incremental_backup_to_aws_script.sh</code> daily at 3 AM</li>
+  <li>Script syncs changed files to S3 mount</li>
+  <li>Output suppressed (<code>&gt; /dev/null 2&gt;&amp;1</code>)</li>
+</ol>
+<p style="margin-top:10px;">The incremental backup covers the website content, media files, and configuration &mdash; everything needed to restore root1 from scratch.</p>
+</div>
+
+<div class="card ge">
+<h2>Live Content Redundancy</h2>
+<p style="margin-bottom:16px;">Published content has natural redundancy through the lsyncd architecture:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Content</th><th>root1 Location</th><th>root2 Location</th><th>Sync Method</th></tr>
+  <tr><td>Published HTML + assets</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>lsyncd (continuous)</td></tr>
+  <tr><td>Josh user websites</td><td><code>website/JoshUsers/</code></td><td><code>new_website/Josh Users/</code></td><td>lsyncd (continuous)</td></tr>
+  <tr><td>Faculty websites</td><td>N/A (user-managed)</td><td><code>s3bucket/public/Websites/</code></td><td>S3 (both mount same bucket)</td></tr>
+  <tr><td>Source XML</td><td><code>website/XML/</code></td><td>Not present</td><td>S3 incremental only</td></tr>
+  <tr><td>Database</td><td>Docker volume</td><td>Not present</td><td>Weekly dump to S3</td></tr>
+</table>
+</div>
+<p style="margin-top:12px;"><strong>Recovery scenario:</strong> If root2 fails, replace it with a fresh server, configure lsyncd target, and wait for a full sync. If root1 fails, restore from S3 backups (database dump + incremental files).</p>
+</div>
+
+<div class="card ga">
+<h2>What's NOT Backed Up</h2>
+<ul>
+  <li><strong>Preview images</strong> (<code>media_files/preview/</code>) &mdash; ephemeral, regenerated on demand, cleaned hourly</li>
+  <li><strong>Docker volumes</strong> (except database) &mdash; static_backend volume is regenerated by <code>collectstatic</code></li>
+  <li><strong>RabbitMQ state</strong> &mdash; message queue is transient, Celery tasks are idempotent</li>
+  <li><strong>Memcached</strong> &mdash; in-memory cache, no persistence needed</li>
+  <li><strong>Web server logs</strong> &mdash; retained on root1's filesystem but not backed up to S3</li>
+</ul>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

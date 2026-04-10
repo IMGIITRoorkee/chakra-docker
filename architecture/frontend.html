@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frontend (Next.js) — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Frontend (Next.js)</span></div>
+
+<h1>Frontend <em>(Next.js)</em></h1>
+<p class="page-subtitle">Next.js editor UI &mdash; visual page composition from UI-kit components</p>
+
+<!-- ══════════ OVERVIEW ══════════ -->
+<div class="card ga">
+<h2>Container Overview</h2>
+<p style="margin-bottom:16px;">The frontend runs in a Docker container using the <code>chakra-frontend:latest</code> image. It serves the editor interface on port 3000, proxied by nginx on root1.</p>
+
+<h3>Startup Command</h3>
+<div class="code-block"><span class="fn">yarn</span> build <span class="kw">&amp;&amp;</span> <span class="fn">pm2</span> start yarn <span class="str">--name</span> <span class="str">"nextjs"</span> <span class="str">--</span> start <span class="kw">&amp;&amp;</span> <span class="fn">pm2</span> monit</div>
+
+<div class="g2" style="margin-top:20px;">
+  <div>
+    <h3>Runtime</h3>
+    <ul>
+      <li><strong>Port:</strong> 3000</li>
+      <li><strong>Process manager:</strong> PM2</li>
+      <li><strong>Proxy:</strong> Nginx on root1 forwards <code>/*</code> fallback to :3000</li>
+      <li><strong>PROXY env var:</strong> <code>chakra.channeli.in</code></li>
+    </ul>
+  </div>
+  <div>
+    <h3>Dev Server</h3>
+    <div class="code-block"><span class="fn">./scripts/run-dev.sh</span> <span class="str">-d</span> 60000 <span class="str">-p</span> 61000</div>
+    <p>Runs Next.js dev mode inside Docker on high ports for local development.</p>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ WHAT IT DOES ══════════ -->
+<div class="card gb">
+<h2>What It Does</h2>
+<p style="margin-bottom:16px;">The frontend is a <strong>visual editor</strong> for composing pages from pre-built UI-kit components. Editors drag and arrange components, and the frontend generates XML from these component trees.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Page</th><th>Purpose</th></tr>
+  <tr><td>Editor</td><td>Visual component composer &mdash; drag, arrange, and configure UI-kit components</td></tr>
+  <tr><td>Page Management</td><td>Create, list, edit, and delete pages</td></tr>
+  <tr><td>Folder Browser</td><td>Navigate the website directory structure</td></tr>
+  <tr><td>File Upload</td><td>Upload images and assets for pages</td></tr>
+  <tr><td>Permissions</td><td>Manage user access and roles</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ BACKEND INTEGRATION ══════════ -->
+<div class="card gc">
+<h2>Backend Integration</h2>
+<p style="margin-bottom:16px;">The frontend communicates with the Django backend using <strong>axios</strong> with credentials enabled for all API calls. Key integration points:</p>
+
+<div class="g2">
+  <div>
+    <h3>Image Picker</h3>
+    <div class="code-block"><span class="kw">GET</span> <span class="path">/api/generator/image</span><span class="str">?xml_page_pk={id}</span></div>
+    <p>Lists available images for a given page. The editor displays these in a picker UI so editors can insert images into their component trees.</p>
+  </div>
+  <div>
+    <h3>Preview</h3>
+    <div class="code-block"><span class="kw">GET</span> <span class="path">/api/generator/preview/</span><span class="str">?xml_page_pk={id}</span></div>
+    <p>Requests a rendered HTML preview of the current page. Django calls the transpiler, which returns HTML with absolute asset URLs for display in the browser.</p>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ API CLIENT ══════════ -->
+<div class="card gd">
+<h2>API Client</h2>
+<p style="margin-bottom:16px;">All backend requests go through a centralized axios instance configured with credentials and the correct base URL.</p>
+
+<div class="code-block"><span class="comment">// Axios instance configuration</span>
+<span class="kw">const</span> api = axios.<span class="fn">create</span>({
+  baseURL: <span class="str">`https://${PROXY}/api`</span>,
+  withCredentials: <span class="str">true</span>,
+});</div>
+<p style="margin-top:12px;">The <code>PROXY</code> environment variable is set to <code>chakra.channeli.in</code> in production, ensuring all API calls route through the main nginx reverse proxy.</p>
+</div>
+
+<!-- ══════════ COMPONENT WORKFLOW ══════════ -->
+<div class="card ge">
+<h2>Component Workflow</h2>
+<p style="margin-bottom:16px;">The editor generates XML from the visual component tree. This XML is saved to the backend and later transpiled to HTML.</p>
+
+<div class="g3">
+  <div class="step"><div class="n">1</div><h4>Compose</h4><p>Editor arranges UI-kit components in the visual editor interface.</p></div>
+  <div class="step"><div class="n">2</div><h4>Generate XML</h4><p>Frontend serializes the component tree into XML format.</p></div>
+  <div class="step"><div class="n">3</div><h4>Save</h4><p>XML is sent to Django backend and stored in <code>website/XML/</code>.</p></div>
+</div>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>

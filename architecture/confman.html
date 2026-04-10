@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ConfMan — Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>ConfMan</span></div>
+
+<h1>Conf<em>Man</em></h1>
+<p class="page-subtitle">Dynamic nginx reverse proxy configuration generator &mdash; zero manual nginx editing</p>
+
+<!-- ══════════ OVERVIEW ══════════ -->
+<div class="card ga">
+<h2>What ConfMan Does</h2>
+<p style="margin-bottom:16px;">ConfMan is a <strong>Django app</strong> that generates nginx reverse proxy configurations dynamically. When an admin approves a subdomain or short URL, ConfMan writes the nginx config file automatically. Combined with lsyncd and inotifywait, this means <strong>zero manual nginx configuration</strong> is needed.</p>
+
+<div class="g3">
+  <div class="step"><div class="n">1</div><h4>Request</h4><p>User submits a subdomain or short URL request through the admin interface.</p></div>
+  <div class="step"><div class="n">2</div><h4>Approve</h4><p>Admin approves the request. Django signal fires in <code>confman/signals/subdomain.py</code>.</p></div>
+  <div class="step"><div class="n">3</div><h4>Generate</h4><p>Signal reads template, substitutes variables, writes config to disk. lsyncd syncs to root2.</p></div>
+</div>
+</div>
+
+<!-- ══════════ MODELS ══════════ -->
+<div class="card gb">
+<h2>Data Models</h2>
+<p style="margin-bottom:16px;">ConfMan manages two primary models, both with an approval workflow.</p>
+
+<div class="g2">
+  <div>
+    <h3>Subdomain</h3>
+    <p>Maps folder paths to subdomains (e.g., <code>cec</code> &rarr; <code>cec.iitr.ac.in</code>). Includes fields for the folder path, short name, certificate paths, home page, and approval status.</p>
+  </div>
+  <div>
+    <h3>Shorturl</h3>
+    <p>Maps short URLs to destinations (e.g., <code>/convocation</code> &rarr; target page). Also requires admin approval before the config is generated.</p>
+  </div>
+</div>
+</div>
+
+<!-- ══════════ SIGNAL FLOW ══════════ -->
+<div class="card gc">
+<h2>Signal Flow</h2>
+<p style="margin-bottom:16px;">When an admin approves a subdomain, a Django signal triggers the config generation pipeline.</p>
+
+<div class="code-block"><span class="comment"># confman/signals/subdomain.py</span>
+<span class="comment"># 1. Read template from confman/config_makers/</span>
+<span class="comment"># 2. Substitute variables:</span>
+<span class="comment">#    - short_name, path, certificate paths, home_page</span>
+<span class="comment"># 3. Write config to:</span>
+<span class="comment">#    reverse_proxy_configurations/subdomains/{shortname}.conf</span>
+<span class="comment"># 4. lsyncd picks up change → syncs to root2</span>
+<span class="comment"># 5. inotifywait on root2 → nginx -s reload</span></div>
+
+<h3>Template Variables</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Variable</th><th>Example</th><th>Purpose</th></tr>
+  <tr><td><code>short_name</code></td><td><code>cec</code></td><td>Subdomain identifier, used in server_name and file paths</td></tr>
+  <tr><td><code>path</code></td><td><code>/home/root2/new_website/cec</code></td><td>Root directory for the subdomain site</td></tr>
+  <tr><td><code>certificate paths</code></td><td><code>/certificates/iitr-certificate/</code></td><td>SSL certificate and key locations</td></tr>
+  <tr><td><code>home_page</code></td><td><code>index.html</code></td><td>Default document for the subdomain</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ CONFIG DIRECTORIES ══════════ -->
+<div class="card gd">
+<h2>Config Directories</h2>
+<p style="margin-bottom:16px;">Generated configs are organized into directories on root1, then synced to root2 by lsyncd.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Variable</th><th>Path</th><th>Contents</th></tr>
+  <tr><td><code>CONFIG_DIR</code></td><td><code>/reverse_proxy_configurations/</code></td><td>Base directory for all generated configs</td></tr>
+  <tr><td><code>SUBDOMAIN_DIR</code></td><td><code>.../subdomains/</code></td><td>Per-subdomain nginx server block configs</td></tr>
+  <tr><td><code>JOSH_SUBDOMAIN_DIR</code></td><td><code>.../josh-subdomains/</code></td><td>Josh user subdomain configs</td></tr>
+  <tr><td><code>SHORT_URL_DIR</code></td><td><code>.../shorturls/</code></td><td>Short URL location block configs</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ JOSH SUBDOMAINS ══════════ -->
+<div class="card ge">
+<h2>Josh User Subdomains</h2>
+<p style="margin-bottom:16px;">In addition to department subdomains, ConfMan also handles <strong>Josh user subdomain configs</strong>. These follow the same approval and generation workflow but are written to a separate directory (<code>josh-subdomains/</code>) and synced to a different location on root2.</p>
+</div>
+
+<!-- ══════════ END TO END ══════════ -->
+<div class="card ga">
+<h2>End-to-End Flow</h2>
+<p style="margin-bottom:16px;">From approval to live subdomain, the entire pipeline is automated:</p>
+
+<div class="g2">
+  <div>
+    <h3>On root1</h3>
+    <ol style="padding-left:18px;">
+      <li>Admin approves subdomain in Django admin</li>
+      <li>Django signal generates nginx config from template</li>
+      <li>Config written to <code>reverse_proxy_configurations/subdomains/</code></li>
+      <li>lsyncd detects change, rsyncs to root2</li>
+    </ol>
+  </div>
+  <div>
+    <h3>On root2</h3>
+    <ol style="padding-left:18px;">
+      <li>Config arrives at <code>/etc/nginx/sites-available/subdomains/</code></li>
+      <li>inotifywait detects new file in <code>/etc/nginx/</code></li>
+      <li>Runs <code>hot-nginx-reload.sh</code></li>
+      <li>Executes <code>nginx -s reload</code> &mdash; subdomain is live</li>
+    </ol>
+  </div>
+</div>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>
