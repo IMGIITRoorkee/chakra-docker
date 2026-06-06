@@ -151,9 +151,12 @@ services:
     # No matter what, if the container stops, start it again
     restart: always
 
-    # Expose the port 5672 used by RabbitMQ to other containers
+    # Expose the port 11211 used by Memcached to other containers
     expose:
     - "11211"
+
+    # Bind to localhost only — prevents external access on host-networked deployments
+    command: memcached -l 127.0.0.1
 
     # Run the container as the non-root user
     user: memcache
