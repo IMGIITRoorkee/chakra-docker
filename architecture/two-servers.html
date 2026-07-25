@@ -92,8 +92,10 @@
   <span class="path">new_website/</span>             <span class="comment"># 70 GB, synced from root1</span>
     <span class="str">Departments/</span>  <span class="str">Centres/</span>  <span class="str">Schools/</span>
     <span class="str">Josh Users/</span>  <span class="str">Admissions/</span>  <span class="str">Administration/</span>
-  <span class="path">s3bucket/</span>
-    <span class="str">public/Websites/</span>       <span class="comment"># Faculty personal websites</span>
+  <span class="path">s3bucket/</span>              <span class="comment"># same bucket root1 mounts</span>
+    <span class="str">public/Websites/</span>       <span class="comment"># faculty.iitr.ac.in (served publicly)</span>
+    <span class="str">chakra-backups/</span>        <span class="comment"># DB dumps - same bucket, not served</span>
+    <span class="str">omniport-backups/</span>      <span class="comment"># separate system's backups</span>
 
 <span class="path">/etc/nginx/</span>
   <span class="str">sites-enabled/</span>           <span class="comment"># cec.conf, ece.conf, gate.conf ...</span>
