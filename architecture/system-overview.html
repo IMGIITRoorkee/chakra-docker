@@ -11,7 +11,7 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>System Overview</span></div>
 
 <h1>System <em>Overview</em></h1>
-<p class="page-subtitle">Verified against production servers (bifrost + edith) &mdash; April 2026</p>
+<p class="page-subtitle">Production servers (bifrost + edith) &mdash; April 2026</p>
 
 <div class="g4" style="margin-bottom:36px;">
   <div class="stat"><div class="v">2</div><div class="l">prod servers</div></div>
@@ -78,7 +78,7 @@
       <li><strong>Nginx:</strong> 18+ subdomain server blocks (cec.iitr.ac.in, ece.iitr.ac.in, etc.)</li>
       <li><strong>inotifywait:</strong> Watches <code>/etc/nginx/</code> for config changes &rarr; auto-reloads nginx</li>
       <li><strong>Filesystem:</strong> <code>/home/root2/new_website/</code> (70 GB, synced from root1)</li>
-      <li><strong>S3 mount:</strong> Faculty personal websites at <code>s3bucket/public/Websites/</code></li>
+      <li><strong>S3 mount:</strong> <code>faculty.iitr.ac.in</code> served from <code>s3bucket/public/Websites/</code> - the same bucket also holds DB dumps and Omniport backups</li>
       <li><strong>No Docker, no database, no cron, no application code</strong></li>
     </ul>
   </div>
@@ -172,7 +172,7 @@ location <span class="str">"/~ECE/Faculty_Name"</span> {
     alias <span class="str">'/home/root2/new_website/...</span>
         <span class="str">.../Faculty/100XXX.html'</span>;
 }</div>
-    <p style="margin-top:10px;">Faculty personal websites served from S3: <code>/home/root2/s3bucket/public/Websites/</code></p>
+    <p style="margin-top:10px;"><code>faculty.iitr.ac.in</code> is served directly from the S3 mount at <code>/home/root2/s3bucket/public/Websites/</code>, bypassing the CMS pipeline entirely. That bucket also stores database dumps and Omniport backups - see <a href="backups.html">Backups &amp; S3</a>.</p>
   </div>
 </div>
 </div>

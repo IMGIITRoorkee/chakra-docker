@@ -47,16 +47,78 @@
     <div class="table-wrap">
     <table>
       <tr><th>Mount Point</th><th>Contents</th></tr>
-      <tr><td><code>/home/root2/s3bucket</code></td><td>Shared S3 bucket (256 TB virtual)</td></tr>
+      <tr><td><code>/home/root2/s3bucket</code></td><td>Shared S3 bucket (256 TB virtual) - the <em>same</em> bucket root1 mounts</td></tr>
     </table>
     </div>
     <p style="margin-top:8px;">Key paths on root2's S3 mount:</p>
     <ul>
-      <li><code>public/Websites/</code> &mdash; Faculty personal websites (served by nginx)</li>
-      <li><code>chakra-backups/</code> &mdash; Database backup archives</li>
-      <li><code>incremantal-backups/</code> &mdash; Incremental data backups</li>
+      <li><code>public/Websites/</code> - Faculty personal websites (served publicly by nginx)</li>
+      <li><code>chakra-backups/</code> - Database backup archives</li>
+      <li><code>incremantal-backups/</code> - Incremental data backups (directory name is misspelled on disk)</li>
+      <li><code>omniport-backups/</code> - Backups belonging to Omniport, a separate system</li>
     </ul>
   </div>
+</div>
+</div>
+
+<!-- ══════════ SHARED BUCKET ══════════ -->
+<div class="card gd">
+<h2>One Bucket, Two Very Different Jobs</h2>
+<p style="margin-bottom:16px;">This is the single most important thing to understand about the S3 setup, and it is easy to miss: <strong>the bucket that serves live public websites is the same bucket that stores database dumps and system backups.</strong> There is no separate "public assets" bucket. The only thing separating world-readable content from backup archives is which prefix nginx is pointed at.</p>
+
+<h3>Actual Bucket Layout</h3>
+<div class="code-block"><span class="path">/home/root2/s3bucket/</span>          <span class="comment"># also mounted at /home/root1/s3bucket</span>
+
+  <span class="str">public/</span>                     <span class="comment"># parent of the served dirs</span>
+    <span class="str">Websites/</span>                <span class="comment"># SERVED - document root for faculty.iitr.ac.in</span>
+      <span class="str">~abhaysah/ ~akrayfpt/ ...</span>   <span class="comment"># per-faculty dirs (tilde + username)</span>
+      <span class="str">ar/ ce/ ch/ cs/ ece/ ee/ ma/ me/ ph/ ...</span>  <span class="comment"># per-department dirs</span>
+      <span class="str">iitr.ac.in/</span>
+    <span class="str">FacSpace/</span>                <span class="comment"># SERVED - under location /media/facspace/</span>
+    <span class="str">websites/  Webspace/</span>     <span class="comment"># NOT referenced by nginx - dormant/legacy</span>
+
+  <span class="str">protected/</span>                  <span class="comment"># NOT referenced by nginx - dormant</span>
+
+  <span class="comment"># ── everything below is BACKUP data in the same bucket, ABOVE the served root ──</span>
+  <span class="str">chakra-backups/</span>             <span class="comment"># Chakra PostgreSQL dumps</span>
+  <span class="str">incremantal-backups/</span>        <span class="comment"># daily incrementals (sic)</span>
+  <span class="str">omniport-backup/</span>            <span class="comment"># Omniport - a separate system</span>
+  <span class="str">omniportBackup/</span>             <span class="comment"># ...and two more naming variants</span>
+  <span class="str">omniport-backups/</span>
+  <span class="str">new_dump/</span>
+  <span class="str">2026-05-01.tar.gz ... 2026-05-30.tar.gz</span>   <span class="comment"># dated daily archives</span>
+
+  <span class="comment"># stray files sitting in the bucket root</span>
+  <span class="str">cartoon.php  move.py  diagnose_conflicts.py</span>
+  <span class="str">beast_test  remount_test.txt</span></div>
+
+<p style="margin-top:14px;">Every nginx <code>root</code>/<code>alias</code> on root2 that touches this bucket points at <code>public/Websites/</code> (faculty.iitr.ac.in) or <code>public/FacSpace/</code> (via <code>location /media/facspace/</code>) - never at <code>public/</code> or the bucket root. <code>autoindex</code> is off everywhere and <code>protected/</code> is not referenced. The backup directories sit <em>above</em> the served root and nginx normalises <code>..</code>, so <strong>the backups are not reachable over HTTP through nginx.</strong></p>
+
+<p style="margin-top:10px;">The S3 endpoint is closed too. Anonymous requests to <code>img-icc-bucket</code> return <code>403 AccessDenied</code> - for <code>chakra-backups/</code>, for an anonymous bucket listing, and for the <code>public/Websites/</code> prefix. The bucket is not world-readable at its native S3 endpoint, and faculty sites are reachable only <em>through</em> nginx's credentialed s3fs mount, not directly. Backups are not exposed at either layer.</p>
+
+<p style="margin-top:10px;">This reflects the current setup, not a structural guarantee: public content and backups still share one bucket. The separation would break if the bucket's public-access-block / policy were loosened, or if an nginx <code>root</code> were moved up a level. Neither is enforced by anything in Chakra.</p>
+
+<h3>Points Worth Reviewing</h3>
+<ul>
+  <li><strong>Public web server has read-write access to the backup store.</strong> The mount on edith is <code>fuse.s3fs (rw, allow_other)</code> over the <em>entire</em> bucket, backup prefixes included. So compromise of the internet-facing static server means write/delete access to Chakra <em>and</em> Omniport backups. Backup integrity has no storage-level protection from the web tier.</li>
+  <li><strong>Backups and public content are not isolated by bucket</strong> - only by which prefix nginx serves. A bucket-level public-read policy would expose database dumps regardless of nginx.</li>
+  <li><strong>Another system's backups live here too</strong> - <code>omniport-backup*</code> means a Chakra bucket misconfiguration is also an Omniport data exposure.</li>
+  <li><strong>Three spellings of the Omniport backup directory</strong> (<code>omniport-backup</code>, <code>omniportBackup</code>, <code>omniport-backups</code>). Whether these are all live targets, or leftovers from renamed jobs, is unknown.</li>
+  <li><strong>Two dormant sibling directories</strong> under <code>public/</code>: <code>websites</code> (lowercase) and <code>Webspace</code> are not referenced by any nginx block - unclear if they are stale or awaiting wiring.</li>
+  <li><strong>Loose scripts in the bucket root</strong> (<code>cartoon.php</code>, <code>move.py</code>, <code>diagnose_conflicts.py</code>) are unowned and undocumented.</li>
+  <li><strong>The s3fs mount is not in <code>/etc/fstab</code></strong> - it is mounted by some other mechanism (likely a systemd <code>.mount</code> unit), so how it survives reboot and where its credentials live should be documented.</li>
+</ul>
+
+<p style="margin-top:14px;">The mount is s3fs onto bucket <code>img-icc-bucket</code> in region <code>ap-south-1</code>, mounted <code>-o allow_other</code> as root. Both root1 and root2 mount this same bucket.</p>
+
+<h3>Still to Document</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Question</th><th>Where to look</th></tr>
+  <tr><td>Where the s3fs credentials live, and how the mount survives reboot (it is not in <code>/etc/fstab</code>)</td><td>The systemd <code>.mount</code> unit and <code>passwd-s3fs</code> / <code>.passwd-s3fs</code></td></tr>
+  <tr><td>Whether any lifecycle/expiry rule exists on the dated tarballs</td><td><code>aws s3api get-bucket-lifecycle-configuration --bucket img-icc-bucket</code></td></tr>
+  <tr><td>Which job writes each <code>omniport-backup*</code> variant</td><td><code>crontab -l</code> on root1 and the Omniport host</td></tr>
+</table>
 </div>
 </div>
 

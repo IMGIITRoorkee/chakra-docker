@@ -100,9 +100,11 @@
         <span class="str">.../Faculty/100XXX.html'</span>;
 }</div>
 
-<h3>Faculty Personal Websites</h3>
-<p>Faculty personal websites are served from S3-mounted storage:</p>
+<h3>Faculty Personal Websites (faculty.iitr.ac.in)</h3>
+<p style="margin-bottom:12px;"><code>faculty.iitr.ac.in</code> is the one subdomain that does <strong>not</strong> serve content produced by the Chakra CMS pipeline. It has no XML source, no transpiler step and no lsyncd stream. Instead nginx serves it straight off the S3 mount, where faculty maintain their own files:</p>
 <div class="code-block"><span class="kw">root</span> <span class="path">/home/root2/s3bucket/public/Websites/$dep/$fac</span>;</div>
+<p style="margin-top:12px;">Content is organised two ways under <code>public/Websites/</code>: per-faculty directories named <code>~username</code> (e.g. <code>~abhaysah</code>), and per-department directories (<code>ece</code>, <code>ce</code>, <code>ma</code>, ...).</p>
+<p style="margin-top:10px;"><strong>Important:</strong> this S3 bucket is the same bucket that holds Chakra database dumps and Omniport backups. nginx is pointed at the <code>public/</code> prefix only, which is what keeps the backup directories off the web - see <a href="backups.html">Backups &amp; S3</a> for the full bucket layout and the risks that come with it.</p>
 </div>
 
 <!-- ══════════ PROXY PASS RULES ══════════ -->
