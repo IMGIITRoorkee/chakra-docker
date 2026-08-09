@@ -14,6 +14,10 @@ services:
     expose:
     - 5432
 
+    # Under network_mode: host the image default of listen_addresses='*' puts
+    # Postgres on every host interface. Django reaches it at localhost.
+    command: postgres -c listen_addresses=127.0.0.1
+
     user: postgres
 
     env_file:
@@ -39,7 +43,7 @@ services:
     - "8000"
     - "8001"
     
-    user: ${CURRENT_UID}
+    user: ${CURRENT_UID:-1000:1000}
 
     command: bash -c "source chakra_backend/.env && supervisord -c /supervisord.conf"
     # Mount the volumes on the Django container
@@ -186,6 +190,11 @@ services:
 
     # Run the container as the non-root user
     user: rabbitmq
+
+    # Same reasoning as Postgres: bind to loopback under host networking.
+    # CELERY_BROKER_URL points at localhost:5672.
+    environment:
+      RABBITMQ_NODE_IP_ADDRESS: 127.0.0.1
 
     # Set the environment variables
     env_file:

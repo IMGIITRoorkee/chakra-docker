@@ -4,3 +4,9 @@ nginx/conf.d/includes/redirect.conf
 postgres/database.env
 
 codebase/
+
+# Secrets: match any .env anywhere. The negation guards the committed stencil
+# templates if this pattern is ever widened to *.env.
+.env
+.env.*
+!*stencil*
