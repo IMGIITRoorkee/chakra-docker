@@ -24,8 +24,6 @@ jobs:
           done
 
       - name: Shellcheck
-        # Only errors block. --severity=warning currently reports ~20 findings in
-        # scripts predating this gate; tighten once those are cleared.
         run: shellcheck --severity=error --shell=bash $(git ls-files '*.sh')
 
   compose:
@@ -43,7 +41,6 @@ jobs:
         run: docker compose config --quiet
 
       - name: Containers must not default to root
-        # user: ${CURRENT_UID} with no default renders empty, which means root.
         run: |
           docker compose config \
             | python3 -c "import sys,yaml; s=yaml.safe_load(sys.stdin)['services']; \
@@ -63,7 +60,6 @@ jobs:
           cat > harness/nginx.conf <<'EOF'
           events {}
           http {
-              # Defined in chakra_stencil.conf at http level; the includes reference it.
               limit_req_zone $binary_remote_addr zone=chakra_zone:16m rate=16r/s;
               include /etc/nginx/harness/conf.d/includes/upstreams.conf;
               server {
