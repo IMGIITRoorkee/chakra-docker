@@ -63,6 +63,8 @@ jobs:
           cat > harness/nginx.conf <<'EOF'
           events {}
           http {
+              # Defined in chakra_stencil.conf at http level; the includes reference it.
+              limit_req_zone $binary_remote_addr zone=chakra_zone:16m rate=16r/s;
               include /etc/nginx/harness/conf.d/includes/upstreams.conf;
               server {
                   listen 8080;

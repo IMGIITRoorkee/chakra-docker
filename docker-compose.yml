@@ -125,6 +125,8 @@ services:
     environment:
       - PROXY=chakra.channeli.in
 
+    user: ${CURRENT_UID:-1000:1000}
+
     command: bash -c "yarn build && pm2 start yarn --name "nextjs" --interpreter bash -- start && pm2 monit"
     # Mount the volumes on the Django container
     volumes:
