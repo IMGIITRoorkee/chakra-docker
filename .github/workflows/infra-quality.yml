@@ -1,0 +1,81 @@
+name: Infra Quality Gate
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax
+        run: |
+          for f in $(git ls-files '*.sh'); do
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; exit 1; }
+          done
+
+      - name: Shellcheck
+        # Only errors block. --severity=warning currently reports ~20 findings in
+        # scripts predating this gate; tighten once those are cleared.
+        run: shellcheck --severity=error --shell=bash $(git ls-files '*.sh')
+
+  compose:
+    name: compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stub the gitignored env files
+        run: |
+          cp postgres/database_stencil.env postgres/database.env
+          cp rabbitmq/message_broker_stencil.env rabbitmq/message_broker.env
+
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+      - name: Containers must not default to root
+        # user: ${CURRENT_UID} with no default renders empty, which means root.
+        run: |
+          docker compose config \
+            | python3 -c "import sys,yaml; s=yaml.safe_load(sys.stdin)['services']; \
+                bad=[n for n,v in s.items() if v.get('user','') in ('', None)]; \
+                sys.exit('services running as root: ' + ', '.join(bad)) if bad else print('all services pin a user')"
+
+  nginx:
+    name: nginx
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble a harness around the tracked includes
+        run: |
+          mkdir -p harness/conf.d
+          cp -r nginx/conf.d/includes harness/conf.d/
+          cat > harness/nginx.conf <<'EOF'
+          events {}
+          http {
+              include /etc/nginx/harness/conf.d/includes/upstreams.conf;
+              server {
+                  listen 8080;
+                  root /tmp;
+                  include /etc/nginx/harness/conf.d/includes/compression.conf;
+                  include /etc/nginx/harness/conf.d/includes/assets.conf;
+                  include /etc/nginx/harness/conf.d/includes/backend.conf;
+                  include /etc/nginx/harness/conf.d/includes/frontend.conf;
+              }
+          }
+          EOF
+
+      - name: Validate
+        run: |
+          docker run --rm -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
+            nginx -t -c /etc/nginx/harness/nginx.conf
