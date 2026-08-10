@@ -21,3 +21,4 @@ echo -e "\e[0;32mCloning chakra-core into ./codebase/chakra-library\e[0m\n"
 git clone https://github.com/IMGIITRoorkee/chakra-library ./codebase/chakra-library &>/dev/null
 
 echo "Everything cloned!"
+if [ 1 -eq 1 ; then echo hi; fi
