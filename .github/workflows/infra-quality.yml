@@ -58,7 +58,7 @@ jobs:
 
       - name: Assemble a harness around the tracked includes
         run: |
-          mkdir -p harness/conf.d harness/www/dept/assets
+          mkdir -p harness/conf.d harness/www/dept/assets/gallery
           cp -r nginx/conf.d/includes harness/conf.d/
           cp nginx/conf.d/00-webp-map.conf harness/conf.d/
           cat > harness/nginx.conf <<'EOF'
@@ -89,6 +89,8 @@ jobs:
           printf 'png-original' > harness/www/dept/assets/photo.png
           printf 'webp-sidecar' > harness/www/dept/assets/photo.png.webp
           printf 'png-only'     > harness/www/dept/assets/lonely.png
+          printf 'nested-png'   > harness/www/dept/assets/gallery/deep.png
+          printf 'nested-webp'  > harness/www/dept/assets/gallery/deep.png.webp
           docker run -d --name webp-harness -p 8080:8080 \
             -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
             nginx -g 'daemon off;' -c /etc/nginx/harness/nginx.conf
@@ -103,6 +105,10 @@ jobs:
             "$(get /dept/assets/photo.png 'image/png')" png-original
           check "webp client falls back when no sidecar exists" \
             "$(get /dept/assets/lonely.png 'image/webp,*/*')" png-only
+          check "nested asset gets its sidecar" \
+            "$(get /dept/assets/gallery/deep.png 'image/webp,*/*')" nested-webp
+          check "nested asset falls back for non-webp clients" \
+            "$(get /dept/assets/gallery/deep.png 'image/png')" nested-png
           check "Vary: Accept is advertised" \
             "$(curl -sI -H 'Accept: image/webp' http://localhost:8080/dept/assets/photo.png \
                | tr -d '\r' | grep -icx 'vary: accept')" 1
