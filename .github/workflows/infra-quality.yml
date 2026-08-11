@@ -58,17 +58,19 @@ jobs:
 
       - name: Assemble a harness around the tracked includes
         run: |
-          mkdir -p harness/conf.d
+          mkdir -p harness/conf.d harness/www/dept/assets
           cp -r nginx/conf.d/includes harness/conf.d/
+          cp nginx/conf.d/00-webp-map.conf harness/conf.d/
           cat > harness/nginx.conf <<'EOF'
           events {}
           http {
               # Defined in chakra_stencil.conf at http level; the includes reference it.
               limit_req_zone $binary_remote_addr zone=chakra_zone:16m rate=16r/s;
+              include /etc/nginx/harness/conf.d/00-webp-map.conf;
               include /etc/nginx/harness/conf.d/includes/upstreams.conf;
               server {
                   listen 8080;
-                  root /tmp;
+                  root /etc/nginx/harness/www;
                   include /etc/nginx/harness/conf.d/includes/compression.conf;
                   include /etc/nginx/harness/conf.d/includes/assets.conf;
                   include /etc/nginx/harness/conf.d/includes/backend.conf;
@@ -81,3 +83,28 @@ jobs:
         run: |
           docker run --rm -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
             nginx -t -c /etc/nginx/harness/nginx.conf
+
+      - name: Serve a request through the harness
+        run: |
+          printf 'png-original' > harness/www/dept/assets/photo.png
+          printf 'webp-sidecar' > harness/www/dept/assets/photo.png.webp
+          printf 'png-only'     > harness/www/dept/assets/lonely.png
+          docker run -d --name webp-harness -p 8080:8080 \
+            -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
+            nginx -g 'daemon off;' -c /etc/nginx/harness/nginx.conf
+          for _ in $(seq 20); do curl -sf -o /dev/null http://localhost:8080/dept/assets/photo.png && break; sleep 0.5; done
+
+          get() { curl -sf ${2:+-H "Accept: $2"} "http://localhost:8080$1"; }
+          check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; docker logs webp-harness; exit 1; }; }
+
+          check "webp client gets the sidecar" \
+            "$(get /dept/assets/photo.png 'image/webp,*/*')" webp-sidecar
+          check "non-webp client gets the original" \
+            "$(get /dept/assets/photo.png 'image/png')" png-original
+          check "webp client falls back when no sidecar exists" \
+            "$(get /dept/assets/lonely.png 'image/webp,*/*')" png-only
+          check "Vary: Accept is advertised" \
+            "$(curl -sI -H 'Accept: image/webp' http://localhost:8080/dept/assets/photo.png \
+               | tr -d '\r' | grep -icx 'vary: accept')" 1
+
+          docker rm -f webp-harness
