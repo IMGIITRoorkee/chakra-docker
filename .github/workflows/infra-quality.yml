@@ -58,7 +58,8 @@ jobs:
 
       - name: Assemble a harness around the tracked includes
         run: |
-          mkdir -p harness/conf.d harness/www/dept/assets/gallery harness/www/assets
+          mkdir -p harness/conf.d harness/www/dept/assets/gallery harness/www/assets \
+                   harness/facultysite/assets
           cp -r nginx/conf.d/includes harness/conf.d/
           cp nginx/conf.d/00-webp-map.conf harness/conf.d/
           # 8080 mirrors root1 (the Chakra app, frontend included); 8081 mirrors a
@@ -82,6 +83,11 @@ jobs:
                   listen 8081;
                   root /etc/nginx/harness/www;
                   include /etc/nginx/harness/conf.d/includes/compression.conf;
+                  # Mirrors faculty-website-route.conf: a prefix alias to a
+                  # personal site, which a regex location would otherwise claim.
+                  location /~fac {
+                      alias /etc/nginx/harness/facultysite;
+                  }
               }
           }
           EOF
@@ -100,6 +106,7 @@ jobs:
           printf 'nested-webp'  > harness/www/dept/assets/gallery/deep.png.webp
           printf 'root-png'     > harness/www/assets/top.png
           printf 'root-webp'    > harness/www/assets/top.png.webp
+          printf 'faculty-file' > harness/facultysite/assets/photo.png
           docker run -d --name webp-harness -p 8080:8080 -p 8081:8081 \
             -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
             nginx -g 'daemon off;' -c /etc/nginx/harness/nginx.conf
@@ -122,6 +129,9 @@ jobs:
             "$(get /assets/top.png 'image/webp,*/*')" root-webp
           check "top-level /assets falls back for non-webp clients" \
             "$(get /assets/top.png 'image/png')" root-png
+          # A faculty path must reach its alias target, not the document root.
+          check "faculty alias is not shadowed by the webp location" \
+            "$(get /~fac/assets/photo.png 'image/webp,*/*')" faculty-file
           check "Vary: Accept is advertised" \
             "$(curl -sI -H 'Accept: image/webp' http://localhost:8081/dept/assets/photo.png \
                | tr -d '\r' | grep -icx 'vary: accept')" 1
