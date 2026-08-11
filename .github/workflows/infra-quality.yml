@@ -58,11 +58,12 @@ jobs:
 
       - name: Assemble a harness around the tracked includes
         run: |
-          mkdir -p harness/conf.d harness/www/dept/assets/gallery harness/www/assets
+          mkdir -p harness/conf.d harness/www/assets harness/www/dept/assets \
+                   harness/facultysite/assets harness/microsite/assets
           cp -r nginx/conf.d/includes harness/conf.d/
           cp nginx/conf.d/00-webp-map.conf harness/conf.d/
-          # 8080 mirrors root1 (the Chakra app, frontend included); 8081 mirrors a
-          # root2 subdomain block, which carries compression.conf alone.
+          # 8080 mirrors root1, where Next.js owns /assets. 8081 mirrors a root2
+          # block, including the prefix alias routes a regex location would steal.
           cat > harness/nginx.conf <<'EOF'
           events {}
           http {
@@ -82,6 +83,15 @@ jobs:
                   listen 8081;
                   root /etc/nginx/harness/www;
                   include /etc/nginx/harness/conf.d/includes/compression.conf;
+                  include /etc/nginx/harness/conf.d/includes/webp-assets.conf;
+                  # faculty-website-route.conf
+                  location /~fac {
+                      alias /etc/nginx/harness/facultysite;
+                  }
+                  # a short-url / microsite route, e.g. location "/aarohi"
+                  location /aarohi {
+                      alias /etc/nginx/harness/microsite;
+                  }
               }
           }
           EOF
@@ -93,44 +103,43 @@ jobs:
 
       - name: Serve a request through the harness
         run: |
-          printf 'png-original' > harness/www/dept/assets/photo.png
-          printf 'webp-sidecar' > harness/www/dept/assets/photo.png.webp
-          printf 'png-only'     > harness/www/dept/assets/lonely.png
-          printf 'nested-png'   > harness/www/dept/assets/gallery/deep.png
-          printf 'nested-webp'  > harness/www/dept/assets/gallery/deep.png.webp
-          printf 'root-png'     > harness/www/assets/top.png
-          printf 'root-webp'    > harness/www/assets/top.png.webp
+          printf 'root-png'       > harness/www/assets/top.png
+          printf 'root-webp'      > harness/www/assets/top.png.webp
+          printf 'png-only'       > harness/www/assets/lonely.png
+          printf 'deep-png'       > harness/www/dept/assets/photo.png
+          printf 'deep-webp'      > harness/www/dept/assets/photo.png.webp
+          printf 'faculty-file'   > harness/facultysite/assets/photo.png
+          printf 'microsite-file' > harness/microsite/assets/photo.png
           docker run -d --name webp-harness -p 8080:8080 -p 8081:8081 \
             -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
             nginx -g 'daemon off;' -c /etc/nginx/harness/nginx.conf
-          for _ in $(seq 20); do curl -sf -o /dev/null http://localhost:8081/dept/assets/photo.png && break; sleep 0.5; done
+          for _ in $(seq 20); do curl -sf -o /dev/null http://localhost:8081/assets/top.png && break; sleep 0.5; done
 
           get() { curl -sf ${2:+-H "Accept: $2"} "http://localhost:8081$1"; }
           check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; docker logs webp-harness; exit 1; }; }
 
           check "webp client gets the sidecar" \
-            "$(get /dept/assets/photo.png 'image/webp,*/*')" webp-sidecar
-          check "non-webp client gets the original" \
-            "$(get /dept/assets/photo.png 'image/png')" png-original
-          check "webp client falls back when no sidecar exists" \
-            "$(get /dept/assets/lonely.png 'image/webp,*/*')" png-only
-          check "nested asset gets its sidecar" \
-            "$(get /dept/assets/gallery/deep.png 'image/webp,*/*')" nested-webp
-          check "nested asset falls back for non-webp clients" \
-            "$(get /dept/assets/gallery/deep.png 'image/png')" nested-png
-          check "top-level /assets gets its sidecar" \
             "$(get /assets/top.png 'image/webp,*/*')" root-webp
-          check "top-level /assets falls back for non-webp clients" \
+          check "non-webp client gets the original" \
             "$(get /assets/top.png 'image/png')" root-png
+          check "falls back when no sidecar exists" \
+            "$(get /assets/lonely.png 'image/webp,*/*')" png-only
           check "Vary: Accept is advertised" \
-            "$(curl -sI -H 'Accept: image/webp' http://localhost:8081/dept/assets/photo.png \
+            "$(curl -sI -H 'Accept: image/webp' http://localhost:8081/assets/top.png \
                | tr -d '\r' | grep -icx 'vary: accept')" 1
 
-          # On root1 the frontend owns /assets, so it must reach the (absent)
-          # Next upstream and 502 rather than be served off disk.
+          # Longer prefixes must keep their alias. A regex location would steal these.
+          check "faculty alias is not shadowed" \
+            "$(get /~fac/assets/photo.png 'image/webp,*/*')" faculty-file
+          check "short-url alias is not shadowed" \
+            "$(get /aarohi/assets/photo.png 'image/webp,*/*')" microsite-file
+
+          # Known limit of the prefix approach: only top-level /assets negotiates.
+          check "nested page assets serve the original" \
+            "$(get /dept/assets/photo.png 'image/webp,*/*')" deep-png
+
+          # root1 does not include webp-assets.conf; Next.js keeps /assets.
           check "frontend keeps /assets on the Chakra server" \
             "$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: image/webp' http://localhost:8080/assets/top.png)" 502
-          check "page assets still negotiate on the Chakra server" \
-            "$(curl -sf -H 'Accept: image/webp' http://localhost:8080/dept/assets/photo.png)" webp-sidecar
 
           docker rm -f webp-harness
