@@ -58,9 +58,11 @@ jobs:
 
       - name: Assemble a harness around the tracked includes
         run: |
-          mkdir -p harness/conf.d harness/www/dept/assets/gallery
+          mkdir -p harness/conf.d harness/www/dept/assets/gallery harness/www/assets
           cp -r nginx/conf.d/includes harness/conf.d/
           cp nginx/conf.d/00-webp-map.conf harness/conf.d/
+          # 8080 mirrors root1 (the Chakra app, frontend included); 8081 mirrors a
+          # root2 subdomain block, which carries compression.conf alone.
           cat > harness/nginx.conf <<'EOF'
           events {}
           http {
@@ -75,6 +77,11 @@ jobs:
                   include /etc/nginx/harness/conf.d/includes/assets.conf;
                   include /etc/nginx/harness/conf.d/includes/backend.conf;
                   include /etc/nginx/harness/conf.d/includes/frontend.conf;
+              }
+              server {
+                  listen 8081;
+                  root /etc/nginx/harness/www;
+                  include /etc/nginx/harness/conf.d/includes/compression.conf;
               }
           }
           EOF
@@ -91,12 +98,14 @@ jobs:
           printf 'png-only'     > harness/www/dept/assets/lonely.png
           printf 'nested-png'   > harness/www/dept/assets/gallery/deep.png
           printf 'nested-webp'  > harness/www/dept/assets/gallery/deep.png.webp
-          docker run -d --name webp-harness -p 8080:8080 \
+          printf 'root-png'     > harness/www/assets/top.png
+          printf 'root-webp'    > harness/www/assets/top.png.webp
+          docker run -d --name webp-harness -p 8080:8080 -p 8081:8081 \
             -v "$PWD/harness:/etc/nginx/harness:ro" nginx:alpine \
             nginx -g 'daemon off;' -c /etc/nginx/harness/nginx.conf
-          for _ in $(seq 20); do curl -sf -o /dev/null http://localhost:8080/dept/assets/photo.png && break; sleep 0.5; done
+          for _ in $(seq 20); do curl -sf -o /dev/null http://localhost:8081/dept/assets/photo.png && break; sleep 0.5; done
 
-          get() { curl -sf ${2:+-H "Accept: $2"} "http://localhost:8080$1"; }
+          get() { curl -sf ${2:+-H "Accept: $2"} "http://localhost:8081$1"; }
           check() { [ "$2" = "$3" ] || { echo "::error::$1: expected '$3', got '$2'"; docker logs webp-harness; exit 1; }; }
 
           check "webp client gets the sidecar" \
@@ -109,8 +118,19 @@ jobs:
             "$(get /dept/assets/gallery/deep.png 'image/webp,*/*')" nested-webp
           check "nested asset falls back for non-webp clients" \
             "$(get /dept/assets/gallery/deep.png 'image/png')" nested-png
+          check "top-level /assets gets its sidecar" \
+            "$(get /assets/top.png 'image/webp,*/*')" root-webp
+          check "top-level /assets falls back for non-webp clients" \
+            "$(get /assets/top.png 'image/png')" root-png
           check "Vary: Accept is advertised" \
-            "$(curl -sI -H 'Accept: image/webp' http://localhost:8080/dept/assets/photo.png \
+            "$(curl -sI -H 'Accept: image/webp' http://localhost:8081/dept/assets/photo.png \
                | tr -d '\r' | grep -icx 'vary: accept')" 1
+
+          # On root1 the frontend owns /assets, so it must reach the (absent)
+          # Next upstream and 502 rather than be served off disk.
+          check "frontend keeps /assets on the Chakra server" \
+            "$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: image/webp' http://localhost:8080/assets/top.png)" 502
+          check "page assets still negotiate on the Chakra server" \
+            "$(curl -sf -H 'Accept: image/webp' http://localhost:8080/dept/assets/photo.png)" webp-sidecar
 
           docker rm -f webp-harness
