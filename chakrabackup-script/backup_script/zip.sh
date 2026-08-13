@@ -1,8 +1,7 @@
 #!/bin/bash
 
-#The directory structure assumed is
-#   year                month           week            day
-#     |->month_tar_file       |->week_tar_file    |->day_tar_file     |->postgres etc dump
+# Assumed layout: year/month/week/day, each level holding its own tar file,
+# with the postgres dump under day.
 
 
 source ${CONFIG_DIR}/zip_config.env

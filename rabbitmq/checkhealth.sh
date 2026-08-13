@@ -1,10 +1,8 @@
 #!/bin/bash
 set -eo pipefail
 
-# A RabbitMQ node is considered healthy if
-# * the rabbit app finished booting & it's running
-# * there are no alarms
-# * there is at least 1 active listener
+# Healthy means the rabbit app booted and runs, raises no alarms,
+# and has at least one active listener.
 
 rabbitmqctl eval '
 { true, rabbit_app_booted_and_running } = { rabbit:is_booted(node()), rabbit_app_booted_and_running },
