@@ -28,6 +28,17 @@ jobs:
         # scripts predating this gate; tighten once those are cleared.
         run: shellcheck --severity=error --shell=bash $(git ls-files '*.sh')
 
+  comments:
+    name: comments
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comment style
+        run: |
+          git ls-files '*.sh' '*.py' '*.yml' '*.yaml' \
+            | xargs python3 .github/scripts/comment_lint.py
+
   compose:
     name: compose
     runs-on: ubuntu-latest

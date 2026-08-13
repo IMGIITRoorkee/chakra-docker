@@ -106,9 +106,6 @@ services:
     depends_on:
     - database
 
-    # Connect to the custom default network
-    # networks:
-    # - network
     network_mode: host
 
   chakra_frontend:
@@ -245,8 +242,3 @@ volumes:
 
   # RabbitMQ needs a volume at /var/lib/rabbitmq/
   rabbitmq_data:
-
-# Networks specify how containers communicate with each other and the host
-# networks:
-#   # Create a network to override Docker's ambiguously named default
-#   network:

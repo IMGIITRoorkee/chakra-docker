@@ -7,9 +7,7 @@ DB="${POSTGRES_DB:-postgres}"
 
 export PGPASSWORD="${POSTGRES_PASS:-}"
 
-# A Postgres node is considered healthy if
-# * it connects with the given username and password 
-# * it returns 1 for a 'SELECT 1' SQL query
+# Healthy means it connects with the given credentials and returns 1 for 'SELECT 1'.
 
 args=(
     # Force postgres to not use the local socket and test external connectivity
