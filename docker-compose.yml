@@ -124,7 +124,7 @@ services:
 
     user: ${CURRENT_UID:-1000:1000}
 
-    command: bash -c "yarn build && pm2 start yarn --name "nextjs" --interpreter bash -- start && pm2 monit"
+    command: bash /start.sh
     # Mount the volumes on the Django container
     volumes:
       # Mount the code
@@ -132,6 +132,11 @@ services:
       source: ./codebase/chakra-frontend/
       target: /chakra-frontend
       read_only: false
+
+    - type: bind
+      source: ./next/start.sh
+      target: /start.sh
+      read_only: true
 
     depends_on:
       - chakra-backend

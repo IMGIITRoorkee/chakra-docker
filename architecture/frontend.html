@@ -19,7 +19,8 @@
 <p style="margin-bottom:16px;">The frontend runs in a Docker container using the <code>chakra-frontend:latest</code> image. It serves the editor interface on port 3000, proxied by nginx on root1.</p>
 
 <h3>Startup Command</h3>
-<div class="code-block"><span class="fn">yarn</span> build <span class="kw">&amp;&amp;</span> <span class="fn">pm2</span> start yarn <span class="str">--name</span> <span class="str">"nextjs"</span> <span class="str">--</span> start <span class="kw">&amp;&amp;</span> <span class="fn">pm2</span> monit</div>
+<div class="code-block"><span class="fn">bash</span> /start.sh</div>
+<p><code>next/start.sh</code> runs <code>yarn build</code> only when a file in the checkout is newer than the last build or <code>PROXY</code> changed (it is baked into the build), then starts <code>yarn start</code> under PM2. A restart without a <code>git pull</code> is back up in about a second instead of rebuilding.</p>
 
 <div class="g2" style="margin-top:20px;">
   <div>
