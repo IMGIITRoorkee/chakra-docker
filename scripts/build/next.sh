@@ -1,6 +1,6 @@
 #!/bin/bash
 read -p "Add npm dependencies for developer tools? (y/N): " DEV_TOOLS
-if [ $DEV_TOOLS == 'Y' -o $DEV_TOOLS == 'y' ]; then
+if [[ $DEV_TOOLS == 'Y' || $DEV_TOOLS == 'y' ]]; then
     # Set the build argument IMAGETYPE to blank
     IMAGETYPE=''
 
@@ -30,7 +30,6 @@ TIMESTAMP=$(date +"%s")
 
 docker build \
     --build-arg IMAGETYPE=${IMAGETYPE} \
-    --no-cache \
     --tag chakra-frontend:${TIMESTAMP} \
     --tag chakra-frontend:${TAG} \
     --tag chakra-frontend:latest \

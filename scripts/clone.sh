@@ -2,22 +2,17 @@
 
 # This script clone the different cms repos into the codebase folder
 
+set -euo pipefail
+
 echo -e "Chakra -- Your one true CMS\n"
 
-# Cloning chakra-core transpiler
-echo -e "\e[0;32mCloning chakra-core into ./codebase/chakra-core\e[0m"
-git clone https://github.com/IMGIITRoorkee/chakra-core ./codebase/chakra-core &>/dev/null
+REPOS="chakra-core:master chakra-backend:master chakra-frontend:master chakra-library:staging"
 
-# Cloning chakra-backend
-echo -e "\e[0;32mCloning chakra-backend into ./codebase/chakra-backend\e[0m"
-git clone https://github.com/IMGIITRoorkee/chakra-backend ./codebase/chakra-backend &>/dev/null
-
-#Cloning chakra-frontend
-echo -e "\e[0;32mCloning chakra-frontend into ./codebase/chakra-frontend\e[0m"
-git clone https://github.com/IMGIITRoorkee/chakra-frontend ./codebase/chakra-frontend &>/dev/null
-
-#Cloning the chakra library
-echo -e "\e[0;32mCloning chakra-core into ./codebase/chakra-library\e[0m\n"
-git clone https://github.com/IMGIITRoorkee/chakra-library ./codebase/chakra-library &>/dev/null
+for REPO in $REPOS; do
+    NAME="${REPO%%:*}"
+    BRANCH="${REPO##*:}"
+    echo -e "\e[0;32mCloning ${NAME} (${BRANCH}) into ./codebase/${NAME}\e[0m"
+    git clone --branch "$BRANCH" "https://github.com/IMGIITRoorkee/${NAME}" "./codebase/${NAME}" >/dev/null
+done
 
 echo "Everything cloned!"

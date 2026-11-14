@@ -2,10 +2,16 @@
 
 # Let's start the docker container for DB
 
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
 trap ctrl_c INT
 
 function ctrl_c() {
     echo "Stopping the dev server"
+    cd "$ROOT"
     docker-compose down
     exit
 }

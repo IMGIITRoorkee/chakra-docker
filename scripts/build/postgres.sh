@@ -1,7 +1,9 @@
+#!/bin/bash
+
 cd postgres/
 
 read -p "Rebuild database .env file? (y/N): " REBUILD
-if [ $REBUILD == 'Y' -o $REBUILD == 'y' ]; then
+if [[ $REBUILD == 'Y' || $REBUILD == 'y' ]]; then
     read -p "Enter the name of the database: " DB
     read -p "Enter the user of the database: " USER
     read -p "Enter the password of the database: " PASSWORD

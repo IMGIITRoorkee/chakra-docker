@@ -4,7 +4,7 @@
 cd rabbitmq/
 
 read -p "Rebuild message broker .env file? (y/N): " REBUILD
-if [ $REBUILD == 'Y' -o $REBUILD == 'y' ]; then
+if [[ $REBUILD == 'Y' || $REBUILD == 'y' ]]; then
     read -p "Enter the user of the message broker: " USER
     read -p "Enter the pass of the message broker: " PASS
 
