@@ -77,7 +77,8 @@
 <!-- ══════════ DEPLOY ══════════ -->
 <div class="card gd">
 <h2>Deploying</h2>
-<p style="margin-bottom:16px;">The server has no GitHub credentials for the private repositories. Ship commits as a git bundle and fast-forward. Never <code>git clean -x</code> a checkout: it would delete ignored files such as <code>.env</code> (the lock blocks it, but the guard is not a reason to try).</p>
+<p style="margin-bottom:16px;"><strong>Normal path: Jenkins.</strong> The <code>canvas-chakra-backend</code>, <code>canvas-chakra-frontend</code>, <code>canvas-chakra-core</code> and <code>canvas-chakra-library</code> jobs on lupin run on every push to <code>master</code> (library: <code>staging</code>): they <code>git pull --rebase</code> over SSH and restart the container or rebuild the transpiler, so a merged PR is live within about a minute. Check it with the smoke test below instead of deploying again. The core checkout marks <code>components.json</code> skip-worktree so its local LibraryConfig does not block the pull.</p>
+<p style="margin-bottom:16px;"><strong>Fallback without Jenkins:</strong> the server has no GitHub credentials for the private repositories. Ship commits as a git bundle and fast-forward. Never <code>git clean -x</code> a checkout: it would delete ignored files such as <code>.env</code> (the lock blocks it, but the guard is not a reason to try).</p>
 <div class="code-block"><span class="comment"># Locally</span>
 git fetch origin
 git bundle create repo.bundle origin/master ^&lt;server HEAD&gt;
