@@ -227,7 +227,7 @@ Important: **source** the backend `.env` before running `manage.py`.
 
 ### Frontend dev server (optional)
 
-The production-ish container runs `yarn build` + `yarn start`. For local development, the frontend repo also ships a helper that runs Next.js dev mode inside Docker on a high port:
+The production-ish container runs `next/start.sh`, which runs `yarn build` only when the checkout changed since the last build, then `yarn start`. For local development, the frontend repo also ships a helper that runs Next.js dev mode inside Docker on a high port:
 
 ```bash
 cd codebase/chakra-frontend
