@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS Production - Chakra Architecture</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="main">
+<div class="content">
+<div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>AWS Production</span></div>
+
+<h1>AWS <em>Production</em></h1>
+<p class="page-subtitle">Chakra runs on the AWS instance (canvas.channeli.in, moving to chakra.channeli.in) since root1 failed in November 2026. root2 still serves the public sites.</p>
+
+<div class="g4" style="margin-bottom:36px;">
+  <div class="stat"><div class="v">AWS</div><div class="l">editor, API, transpiler</div></div>
+  <div class="stat"><div class="v">root2</div><div class="l">public sites (nginx)</div></div>
+  <div class="stat"><div class="v">lsyncd</div><div class="l">AWS to root2 via reverse tunnel</div></div>
+  <div class="stat"><div class="v">IITR only</div><div class="l">editor reachable from campus network</div></div>
+</div>
+
+<!-- ══════════ TOPOLOGY ══════════ -->
+<div class="card ga">
+<h2>What runs where</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>How it runs</th><th>Restart</th></tr>
+  <tr><td>Backend (Django: Gunicorn, Daphne, Celery)</td><td>Docker container <code>chakra-docker_chakra-backend_1</code>, processes under supervisord. Program list: <code>codebase/chakra-backend/supervisor.d/supervisord.conf</code></td><td><code>docker restart chakra-docker_chakra-backend_1</code></td></tr>
+  <tr><td>Frontend (Next.js)</td><td>Container <code>chakra-docker_chakra_frontend_1</code> running <code>next/start.sh</code>, which rebuilds only when the checkout or <code>PROXY</code> changed</td><td><code>CURRENT_UID=1000:1000 docker-compose up -d chakra_frontend</code></td></tr>
+  <tr><td>Transpiler (chakra-core)</td><td>Flask on 127.0.0.1:5000 in tmux session <code>chakra-core</code>, started by <code>~/chakra-core-start.sh</code>; the Scala build lives in <code>target/universal</code></td><td><code>tmux kill-session -t chakra-core; tmux new-session -d -s chakra-core '~/chakra-core-start.sh; exec bash'</code></td></tr>
+  <tr><td>Message broker (RabbitMQ)</td><td>Container <code>chakra-docker_message-broker_1</code>, used by Celery for short-URL config and mail tasks</td><td><code>docker restart chakra-docker_message-broker_1</code></td></tr>
+  <tr><td>Postgres, memcached</td><td>Containers from <code>docker-compose.yml</code></td><td>Restart memcached to clear preview cache</td></tr>
+  <tr><td>nginx</td><td>Container with <code>nginx/conf.d/canvas.conf</code>; editor allowed only from the IITR network (<code>includes/iitr-only.conf</code>)</td><td>-</td></tr>
+  <tr><td>Component library</td><td>Served from cmsredesign.channeli.in (<code>chakra-library</code>, branch <code>staging</code>); CSS fixes apply to every site without republishing</td><td>-</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ══════════ SYNC ══════════ -->
+<div class="card gb">
+<h2>Publishing path to root2</h2>
+<p style="margin-bottom:16px;">lsyncd (<code>lsyncd-chakra</code> systemd unit, <code>/etc/lsyncd/lsyncd.conf.lua</code>) pushes five streams to root2 through a reverse SSH tunnel that root2 keeps open from cron. All streams use <code>delete = true</code>.</p>
+<ul>
+  <li><strong>Short URLs:</strong> the AWS directory <code>reverse_proxy_configurations/shorturls/</code> is a full mirror of root2's <code>/etc/nginx/conf.d/includes/</code>, hand-written files such as <code>main-route.conf</code> included. Edit those files on AWS, never on root2: lsyncd overwrites root2 from AWS, and a file deleted on AWS is deleted on root2.</li>
+  <li><strong>Short-URL generation:</strong> approving a faculty short URL queues the Celery task <code>create_shorturl_configuration</code>, which rewrites every subdomain's file from the database.</li>
+</ul>
+</div>
+
+<!-- ══════════ SERVER-ONLY CONFIG ══════════ -->
+<div class="card gc">
+<h2>Server-only configuration is locked</h2>
+<p style="margin-bottom:16px;">Secrets and environment-specific files are not in git, so a deploy or a build script (for example <code>scripts/build/postgres.sh</code>, which can regenerate <code>database.env</code>) must never change them. <code>~/chakra-env-guard.sh</code> snapshots them, makes them immutable (<code>chattr +i</code>) and checks them for drift.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>File</th><th>Guard</th></tr>
+  <tr><td><code>codebase/chakra-backend/chakra_backend/.env</code>, <code>codebase/chakra-backend/supervisor.d/supervisord.conf</code></td><td>locked</td></tr>
+  <tr><td><code>codebase/chakra-frontend/.env.local</code>, <code>codebase/chakra-core/.env</code></td><td>locked</td></tr>
+  <tr><td><code>postgres/database.env</code>, <code>rabbitmq/message_broker.env</code>, <code>docker-compose.override.yml</code></td><td>locked</td></tr>
+  <tr><td><code>nginx/conf.d/canvas.conf</code>, <code>nginx/conf.d/includes/redirect.conf</code></td><td>locked</td></tr>
+  <tr><td><code>~/chakra-core-start.sh</code>, <code>~/chakra-core-libraryconfig.json</code></td><td>locked</td></tr>
+  <tr><td><code>codebase/chakra-core/components.json</code>, <code>/etc/lsyncd/lsyncd.conf.lua</code></td><td>drift-checked only (git must still update <code>components.json</code>)</td></tr>
+</table>
+</div>
+<div class="code-block" style="margin-top:16px;"><span class="comment"># Change a locked file</span>
+~/chakra-env-guard.sh unlock
+<span class="comment"># edit, restart the service, verify</span>
+~/chakra-env-guard.sh snapshot   <span class="comment"># copy to ~/chakra-env-backup/ and S3, refresh the checksum manifest</span>
+~/chakra-env-guard.sh lock</div>
+<h3 style="margin-top:20px;">Secrets that must agree</h3>
+<ul>
+  <li><strong>Transpiler token:</strong> the backend's compose command runs <code>source chakra_backend/.env</code>, so <code>$</code> in a value is shell-expanded. The value the web workers see is what <code>chakra-core/.env</code> must hold. Compare against <code>/proc/&lt;gunicorn pid&gt;/environ</code>, not against <code>manage.py shell</code>, which reads the file unexpanded. <code>chakra-core-start.sh</code> reads its <code>.env</code> literally.</li>
+  <li><strong>Broker login:</strong> <code>RABBITMQ_DEFAULT_USER</code> and <code>RABBITMQ_DEFAULT_PASS</code> in the backend <code>.env</code> must match <code>rabbitmq/message_broker.env</code>, otherwise Celery's login is refused and the worker exits.</li>
+</ul>
+</div>
+
+<!-- ══════════ DEPLOY ══════════ -->
+<div class="card gd">
+<h2>Deploying</h2>
+<p style="margin-bottom:16px;">The server has no GitHub credentials for the private repositories. Ship commits as a git bundle and fast-forward. Never <code>git clean -x</code> a checkout: it would delete ignored files such as <code>.env</code> (the lock blocks it, but the guard is not a reason to try).</p>
+<div class="code-block"><span class="comment"># Locally</span>
+git fetch origin
+git bundle create repo.bundle origin/master ^&lt;server HEAD&gt;
+<span class="comment"># copy repo.bundle to the server, then in the checkout</span>
+git fetch /tmp/repo.bundle refs/remotes/origin/master:refs/remotes/origin/master
+git merge --ff-only origin/master</div>
+<div class="table-wrap" style="margin-top:16px;">
+<table>
+  <tr><th>Repo</th><th>After the merge</th><th>Verify</th></tr>
+  <tr><td>chakra-backend</td><td>Restart the backend container</td><td>Admin login returns 200; <code>docker top</code> shows a Celery worker</td></tr>
+  <tr><td>chakra-frontend</td><td>Recreate the frontend container</td><td>127.0.0.1:3000 returns 200</td></tr>
+  <tr><td>chakra-core</td><td><code>PATH=$HOME/.local/share/coursier/bin:$PATH bash pack.sh</code>, then restart the tmux session</td><td>A real preview renders; the tmux pane shows <code>POST / 200</code></td></tr>
+  <tr><td>chakra-docker (public)</td><td><code>git pull</code></td><td>-</td></tr>
+  <tr><td>chakra-library</td><td>Bundle to cmsredesign, <code>sudo git</code> in <code>/home/ubuntu/cms3.0/chakra-library</code></td><td>Served file matches the commit</td></tr>
+</table>
+</div>
+<p style="margin-top:16px;">The production image is Python 3.8. CI runs compile and unit tests on 3.8, so a 3.9+ only API fails in CI instead of at import time on the server.</p>
+</div>
+
+<!-- ══════════ MONITORING ══════════ -->
+<div class="card ge">
+<h2>Health and backups</h2>
+<ul>
+  <li><code>~/chakra-backup/chakra-health.sh</code> runs every 5 minutes and publishes CloudWatch metrics in <code>Chakra/Health</code>: BackupDbFresh, BackupFilesFresh, DiskOk, LsyncdUp, Root2TunnelUp, BackendUp, FrontendUp, TranspilerUp, SiteUp, ConfigUnchanged, CeleryUp and AllOk.</li>
+  <li><code>~/chakra-backup/chakra-backup.sh db|files</code> uploads database dumps (every 6 hours) and files (daily) to the IMG S3 bucket under <code>chakra-aws-backups/</code>. Config snapshots go to <code>chakra-aws-backups/env/</code>.</li>
+</ul>
+</div>
+
+<!-- ══════════ CHANGE LOG ══════════ -->
+<div class="card ga">
+<h2>Change log</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Date</th><th>Change</th></tr>
+  <tr><td>2026-11-12</td><td>root1 went down. The AWS staging instance became the main Chakra: database rebuilt from the January dump and the published XML, reconciled with root2's live HTML; lsyncd to root2 through a reverse tunnel; backups and health metrics to S3 and CloudWatch.</td></tr>
+  <tr><td>2026-11-13</td><td>Production Channeli OAuth; editor restricted to the IITR network; TLS 1.2/1.3 and HTTP/2 on nginx; lsyncd <code>delete = true</code> enabled; faculty.iitr.ac.in certificate renewed.</td></tr>
+  <tr><td>2026-11-14</td><td>Merged and deployed backend, frontend, core, docker and library PRs. The first backend deploy failed on Python 3.8 (<code>functools.cache</code>), so CI now tests on 3.8.</td></tr>
+  <tr><td>2026-11-15</td><td>Core restarts go through <code>chakra-core-start.sh</code>, which reads <code>.env</code> literally. Celery now runs: broker credentials added to the backend <code>.env</code>, <code>autorestart=true</code> on the worker. Short-URL configs regenerated: five approved faculty short URLs that had never been written are now live, and <code>~EE/sgceefee</code> was marked approved to match root2. Server-only config locked with <code>chakra-env-guard.sh</code>; ConfigUnchanged and CeleryUp health metrics added.</td></tr>
+</table>
+</div>
+</div>
+
+</div>
+</div>
+<script src="nav.js"></script>
+</body>
+</html>
