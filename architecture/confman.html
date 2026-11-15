@@ -11,35 +11,33 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>ConfMan</span></div>
 
 <h1>Conf<em>Man</em></h1>
-<p class="page-subtitle">Dynamic nginx reverse proxy configuration generator &mdash; zero manual nginx editing</p>
-
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<p class="page-subtitle">Dynamic nginx configuration generator - approved subdomains and short URLs become root2 nginx config without hand edits</p>
 
 <!-- ══════════ OVERVIEW ══════════ -->
 <div class="card ga">
 <h2>What ConfMan Does</h2>
-<p style="margin-bottom:16px;">ConfMan is a <strong>Django app</strong> that generates nginx reverse proxy configurations dynamically. When an admin approves a subdomain or short URL, ConfMan writes the nginx config file automatically. Combined with lsyncd and inotifywait, this means <strong>zero manual nginx configuration</strong> is needed.</p>
+<p style="margin-bottom:16px;">ConfMan is a <strong>Django app</strong> in the backend on the AWS app server. When an admin approves a subdomain or a faculty short URL, ConfMan writes the nginx config file. lsyncd copies it to root2 and a watcher there reloads nginx, so <strong>no one edits nginx on root2 by hand</strong>.</p>
 
 <div class="g3">
-  <div class="step"><div class="n">1</div><h4>Request</h4><p>User submits a subdomain or short URL request through the admin interface.</p></div>
-  <div class="step"><div class="n">2</div><h4>Approve</h4><p>Admin approves the request. Django signal fires in <code>confman/signals/subdomain.py</code>.</p></div>
-  <div class="step"><div class="n">3</div><h4>Generate</h4><p>Signal reads template, substitutes variables, writes config to disk. lsyncd syncs to root2.</p></div>
+  <div class="step"><div class="n">1</div><h4>Request</h4><p>An editor or admin submits a subdomain or short URL request in the Chakra editor.</p></div>
+  <div class="step"><div class="n">2</div><h4>Approve</h4><p>An admin approves it. A Django <code>post_save</code> signal fires.</p></div>
+  <div class="step"><div class="n">3</div><h4>Generate</h4><p>The signal (or a Celery task, for short URLs) renders a template and writes the config. lsyncd syncs it to root2.</p></div>
 </div>
 </div>
 
 <!-- ══════════ MODELS ══════════ -->
 <div class="card gb">
 <h2>Data Models</h2>
-<p style="margin-bottom:16px;">ConfMan manages two primary models, both with an approval workflow.</p>
+<p style="margin-bottom:16px;">ConfMan manages two models, both with an approval status (pending, approved, declined). Requests, approvals and rejections send no-reply emails.</p>
 
 <div class="g2">
   <div>
     <h3>Subdomain</h3>
-    <p>Maps folder paths to subdomains (e.g., <code>cec</code> &rarr; <code>cec.iitr.ac.in</code>). Includes fields for the folder path, short name, certificate paths, home page, and approval status.</p>
+    <p>Maps a folder to a subdomain (for example the ECE department folder to <code>ece.iitr.ac.in</code>). Stores the folder, short name, previous short name (for renames), home page and approval status.</p>
   </div>
   <div>
     <h3>Shorturl</h3>
-    <p>Maps short URLs to destinations (e.g., <code>/convocation</code> &rarr; target page). Also requires admin approval before the config is generated.</p>
+    <p>Attached to a page through a generic relation. Faculty short URLs (<code>/~EE/&lt;name&gt;</code>) become nginx <code>location</code> blocks that alias the page's published HTML file. A declined request can carry a rejection reason. Folder short URLs are stored too, but only faculty short URLs generate nginx config.</p>
   </div>
 </div>
 </div>
@@ -47,49 +45,65 @@
 <!-- ══════════ SIGNAL FLOW ══════════ -->
 <div class="card gc">
 <h2>Signal Flow</h2>
-<p style="margin-bottom:16px;">When an admin approves a subdomain, a Django signal triggers the config generation pipeline.</p>
 
-<div class="code-block"><span class="comment"># confman/signals/subdomain.py</span>
-<span class="comment"># 1. Read template from confman/config_makers/</span>
-<span class="comment"># 2. Substitute variables:</span>
-<span class="comment">#    - short_name, path, certificate paths, home_page</span>
-<span class="comment"># 3. Write config to:</span>
-<span class="comment">#    reverse_proxy_configurations/subdomains/{shortname}.conf</span>
-<span class="comment"># 4. lsyncd picks up change → syncs to root2</span>
-<span class="comment"># 5. inotifywait on root2 → nginx -s reload</span></div>
+<div class="g2">
+  <div>
+    <h3>Subdomains</h3>
+    <div class="code-block"><span class="comment"># confman/signals/subdomain.py</span>
+<span class="comment"># 1. Skip unless approved and the folder has a parent</span>
+<span class="comment"># 2. Josh folder? use josh-subdomain_template.txt,</span>
+<span class="comment">#    else subdomain_template.txt</span>
+<span class="comment"># 3. Substitute short name, root path, certificates</span>
+<span class="comment"># 4. Write subdomains/{shortname}.conf</span>
+<span class="comment">#    or josh-subdomains/{shortname}.conf</span>
+<span class="comment"># 5. On rename, move shorturls/{old}.conf to {new}.conf</span></div>
+  </div>
+  <div>
+    <h3>Short URLs</h3>
+    <div class="code-block"><span class="comment"># confman/signals/short_url.py</span>
+<span class="comment"># 1. Approved faculty short URL:</span>
+<span class="comment">#    queue a Celery task</span>
+<span class="comment"># 2. For each approved subdomain,</span>
+<span class="comment">#    rewrite shorturls/{shortname}.conf</span>
+<span class="comment">#    from its published pages</span>
+<span class="comment"># 3. iitr.ac.in: shorturls/iitr.conf</span></div>
+  </div>
+</div>
+<p style="margin-top:12px;">Short URLs are regenerated as a whole file per subdomain, from the database. Pages that were never published are skipped. A third signal, <code>josh_folder_update.py</code>, rewrites <code>shorturls/josh-route.conf</code> whenever a folder under <code>JoshUsers</code> changes.</p>
 
 <h3>Template Variables</h3>
 <div class="table-wrap">
 <table>
   <tr><th>Variable</th><th>Example</th><th>Purpose</th></tr>
-  <tr><td><code>short_name</code></td><td><code>cec</code></td><td>Subdomain identifier, used in server_name and file paths</td></tr>
-  <tr><td><code>path</code></td><td><code>/home/root2/new_website/cec</code></td><td>Root directory for the subdomain site</td></tr>
-  <tr><td><code>certificate paths</code></td><td><code>/certificates/iitr-certificate/</code></td><td>SSL certificate and key locations</td></tr>
-  <tr><td><code>home_page</code></td><td><code>index.html</code></td><td>Default document for the subdomain</td></tr>
+  <tr><td><code>short_name</code></td><td><code>ece</code></td><td>Subdomain identifier, used in <code>server_name</code> and file names</td></tr>
+  <tr><td><code>path</code></td><td><code>/home/root2/new_website/Departments/...</code></td><td>Site root on root2 (from <code>CONFMAN_BASE_WEBSITE_PATH</code>)</td></tr>
+  <tr><td><code>certificate paths</code></td><td><code>/certificates/iitr-certificate/</code></td><td>TLS certificate and key on root2</td></tr>
+  <tr><td><code>home_page</code></td><td><code>Home.html</code></td><td>Default document for the subdomain</td></tr>
 </table>
 </div>
+<p style="margin-top:12px;"><strong>Known gap:</strong> <code>confman/config_makers/</code> ships the Josh, Josh-URL and short-URL templates, but not <code>subdomain_template.txt</code>. Until it is restored, approving a <em>new department or centre</em> subdomain logs "Unable to read subdomain template" and writes nothing. Existing subdomain configs are unaffected.</p>
 </div>
 
 <!-- ══════════ CONFIG DIRECTORIES ══════════ -->
 <div class="card gd">
 <h2>Config Directories</h2>
-<p style="margin-bottom:16px;">Generated configs are organized into directories on root1, then synced to root2 by lsyncd.</p>
+<p style="margin-bottom:16px;">ConfMan writes under <code>CONFIG_DIR</code> (<code>/reverse_proxy_configurations/</code> in the backend container). Each directory is its own lsyncd stream with <code>delete = true</code>, so root2 holds an exact mirror.</p>
 
 <div class="table-wrap">
 <table>
-  <tr><th>Variable</th><th>Path</th><th>Contents</th></tr>
-  <tr><td><code>CONFIG_DIR</code></td><td><code>/reverse_proxy_configurations/</code></td><td>Base directory for all generated configs</td></tr>
-  <tr><td><code>SUBDOMAIN_DIR</code></td><td><code>.../subdomains/</code></td><td>Per-subdomain nginx server block configs</td></tr>
-  <tr><td><code>JOSH_SUBDOMAIN_DIR</code></td><td><code>.../josh-subdomains/</code></td><td>Josh user subdomain configs</td></tr>
-  <tr><td><code>SHORT_URL_DIR</code></td><td><code>.../shorturls/</code></td><td>Short URL location block configs</td></tr>
+  <tr><th>Directory</th><th>On root2</th><th>Contents</th></tr>
+  <tr><td><code>subdomains/</code></td><td><code>/etc/nginx/sites-available/subdomains/</code></td><td>Department and centre server blocks (38)</td></tr>
+  <tr><td><code>josh-subdomains/</code></td><td><code>/etc/nginx/sites-available/josh-subdomains/</code></td><td>Josh site server blocks</td></tr>
+  <tr><td><code>shorturls/</code></td><td><code>/etc/nginx/conf.d/includes/</code></td><td>One short-URL file per subdomain, <code>iitr.conf</code>, <code>josh-route.conf</code>, and the hand-maintained includes that live alongside them (<code>main-route.conf</code>, <code>faculty-website-route.conf</code>, ...)</td></tr>
 </table>
 </div>
+<p style="margin-top:12px;">Because <code>shorturls/</code> mirrors the whole <code>conf.d/includes/</code> directory, any include changed on root2 must also be changed in the AWS copy, or the next sync reverts it.</p>
 </div>
 
 <!-- ══════════ JOSH SUBDOMAINS ══════════ -->
 <div class="card ge">
 <h2>Josh User Subdomains</h2>
-<p style="margin-bottom:16px;">In addition to department subdomains, ConfMan also handles <strong>Josh user subdomain configs</strong>. These follow the same approval and generation workflow but are written to a separate directory (<code>josh-subdomains/</code>) and synced to a different location on root2.</p>
+<p style="margin-bottom:16px;">Josh sites are static uploads under <code>JoshUsers/</code> (for example gate, jam, drc). ConfMan treats a subdomain on a Josh folder the same way, but uses <code>josh-subdomain_template.txt</code> and writes to <code>josh-subdomains/</code>. Their files reach root2 through the separate <code>JoshUsers/</code> lsyncd stream.</p>
 </div>
 
 <!-- ══════════ END TO END ══════════ -->
@@ -99,24 +113,25 @@
 
 <div class="g2">
   <div>
-    <h3>On root1</h3>
+    <h3>On the AWS app server</h3>
     <ol style="padding-left:18px;">
-      <li>Admin approves subdomain in Django admin</li>
-      <li>Django signal generates nginx config from template</li>
-      <li>Config written to <code>reverse_proxy_configurations/subdomains/</code></li>
-      <li>lsyncd detects change, rsyncs to root2</li>
+      <li>Admin approves the request in the editor</li>
+      <li>Signal or Celery task renders the template</li>
+      <li>Config written under <code>reverse_proxy_configurations/</code></li>
+      <li>lsyncd pushes it to root2 through the reverse tunnel</li>
     </ol>
   </div>
   <div>
     <h3>On root2</h3>
     <ol style="padding-left:18px;">
-      <li>Config arrives at <code>/etc/nginx/sites-available/subdomains/</code></li>
-      <li>inotifywait detects new file in <code>/etc/nginx/</code></li>
-      <li>Runs <code>hot-nginx-reload.sh</code></li>
-      <li>Executes <code>nginx -s reload</code> &mdash; subdomain is live</li>
+      <li>Config arrives in <code>sites-available/</code> or <code>conf.d/includes/</code></li>
+      <li>The <code>hot-nginx-reload</code> service sees the change (inotifywait on <code>/etc/nginx/</code>)</li>
+      <li>It runs <code>nginx -t</code>; on success, <code>service nginx reload</code></li>
+      <li>On failure it logs the path and keeps the old config running</li>
     </ol>
   </div>
 </div>
+<p style="margin-top:12px;">Short URLs depend on Celery. If the worker is down, approvals are saved but no config is written; the CeleryUp health metric and <code>scripts/smoke.sh</code> catch that.</p>
 </div>
 
 </div>

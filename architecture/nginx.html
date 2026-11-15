@@ -11,38 +11,42 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Nginx &amp; Routing</span></div>
 
 <h1>Nginx &amp; <em>Routing</em></h1>
-<p class="page-subtitle">Two separate nginx instances &mdash; application proxy on root1, static file server on root2</p>
-
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<p class="page-subtitle">Two nginx instances - the editor proxy on the AWS app server, the public static server on root2</p>
 
 <!-- ══════════ OVERVIEW ══════════ -->
 <div class="card ga">
 <h2>Two Nginx Instances</h2>
-<p style="margin-bottom:16px;">Chakra uses <strong>two separate nginx instances</strong> on two different servers. Root1 (bifrost) proxies application traffic for the CMS editor and APIs. Root2 (edith) serves published department websites as static files.</p>
+<p style="margin-bottom:16px;">Chakra uses <strong>two separate nginx instances</strong>. The one on the <strong>AWS app server</strong> proxies the editor and its API at chakra.channeli.in. The one on <strong>root2 (edith)</strong> serves the published websites (iitr.ac.in and every subdomain) as static files. Server access details are in the private <code>chakra-ops</code> skill (<code>chakra-backend/.claude/skills/chakra-ops</code>).</p>
 
 <div class="g2">
-  <div class="stat"><div class="v">root1</div><div class="l">chakra.channeli.in</div></div>
-  <div class="stat"><div class="v">root2</div><div class="l">subdomain.iitr.ac.in</div></div>
+  <div class="stat"><div class="v">AWS</div><div class="l">chakra.channeli.in (editor)</div></div>
+  <div class="stat"><div class="v">root2</div><div class="l">iitr.ac.in + subdomains</div></div>
 </div>
+<p style="margin-top:12px;">History: until November 2026 the editor proxy ran on root1 (bifrost). See <a href="aws-production.html">AWS production</a>.</p>
 </div>
 
-<!-- ══════════ ROOT1 NGINX ══════════ -->
+<!-- ══════════ AWS NGINX ══════════ -->
 <div class="card gb">
-<h2>Root1 Nginx &mdash; chakra.channeli.in</h2>
-<p style="margin-bottom:16px;">Application traffic for editors and the CMS API. Template: <code>nginx/conf.d/chakra_stencil.conf</code>. Listens on <strong>443 SSL</strong> with rate limiting at <strong>16r/s per IP</strong> (<code>chakra_zone</code>).</p>
+<h2>AWS Nginx &mdash; chakra.channeli.in</h2>
+<p style="margin-bottom:16px;">This is the <strong>host</strong> nginx, not a container. Site file: <code>/etc/nginx/sites-enabled/chakra.conf</code>, with includes in <code>/etc/nginx/conf.d/includes/</code>. The copies under <code>chakra-docker/nginx/</code> in the repo are templates and are not loaded. The live files are locked by the config guard (see <a href="aws-production.html">AWS production</a>).</p>
+<ul style="margin:0 0 16px 18px;">
+  <li>Listens on <strong>443 with TLS 1.2/1.3 and HTTP/2</strong>.</li>
+  <li><strong>Editor is IITR-network only</strong>: <code>iitr-only.conf</code> allows the campus range and localhost (for health checks) and denies everything else.</li>
+  <li><strong>canvas.channeli.in</strong> (the old name) answers <strong>410 Gone</strong> with <code>X-Robots-Tag: noindex</code>.</li>
+  <li><strong>Any other name or a bare IP</strong> hits a default server that closes the connection (444).</li>
+</ul>
 
 <h3>Route Table</h3>
 <div class="table-wrap">
 <table>
   <tr><th>Path</th><th>Destination</th><th>Notes</th></tr>
-  <tr><td><code>/chakra_auth/*</code></td><td>Gunicorn :8000</td><td>Authentication endpoints</td></tr>
-  <tr><td><code>/generator/*</code></td><td>Gunicorn :8000</td><td>Page management API</td></tr>
-  <tr><td><code>/filemanager/*</code></td><td>Gunicorn :8000</td><td>File management API</td></tr>
-  <tr><td><code>/ws/*</code></td><td>Daphne :8001</td><td>WebSocket connections</td></tr>
-  <tr><td><code>/media/*</code></td><td><code>/media_files/</code> alias</td><td>Preview images and uploads</td></tr>
-  <tr><td><code>/static/*</code></td><td><code>/static_files/</code></td><td>Django collected static files</td></tr>
-  <tr><td><code>/_next/static/*</code></td><td>Next.js build</td><td>Next.js static assets</td></tr>
-  <tr><td><code>/*</code> (fallback)</td><td>Next.js :3000</td><td>Editor UI and all other routes</td></tr>
+  <tr><td><code>/chakra_auth</code>, <code>/generator</code>, <code>/filemanager</code>, <code>/admin</code>, <code>/confman</code></td><td>Gunicorn :8000</td><td>Django API and admin (<code>backend.conf</code>)</td></tr>
+  <tr><td><code>/ws</code></td><td>Daphne :8001</td><td>WebSocket upgrade</td></tr>
+  <tr><td><code>/api/*</code></td><td>Next.js :3000</td><td>Next rewrites <code>/api/:path*/</code> to the backend; separate high rate limit</td></tr>
+  <tr><td><code>/media</code></td><td>backend <code>media_files/</code></td><td>Uploads and editor preview images (<code>/media/preview/</code>)</td></tr>
+  <tr><td><code>/static</code>, <code>/static_backend</code></td><td>backend static dirs</td><td>Django collected static files</td></tr>
+  <tr><td><code>/_next/static</code></td><td>frontend <code>.next/static</code></td><td>Served from disk with a 1 hour cache</td></tr>
+  <tr><td><code>/</code> (fallback)</td><td>Next.js :3000</td><td>Editor UI</td></tr>
 </table>
 </div>
 
@@ -50,11 +54,13 @@
 <div class="table-wrap">
 <table>
   <tr><th>Include</th><th>Purpose</th></tr>
-  <tr><td><code>upstreams.conf</code></td><td>Defines upstream blocks: gunicorn 127.0.0.1:8000, daphne 127.0.0.1:8001, next 127.0.0.1:3000</td></tr>
-  <tr><td><code>assets.conf</code></td><td>Static asset serving rules</td></tr>
-  <tr><td><code>backend.conf</code></td><td>Django backend location blocks</td></tr>
-  <tr><td><code>frontend.conf</code></td><td>Next.js frontend location blocks</td></tr>
-  <tr><td><code>compression.conf</code></td><td>Gzip compression settings</td></tr>
+  <tr><td><code>upstreams.conf</code></td><td>gunicorn 127.0.0.1:8000, daphne 127.0.0.1:8001, next 127.0.0.1:3000</td></tr>
+  <tr><td><code>iitr-only.conf</code></td><td>Allow the IITR network and localhost, deny all others</td></tr>
+  <tr><td><code>assets.conf</code></td><td><code>/media</code>, <code>/static</code>, <code>/static_backend</code> aliases</td></tr>
+  <tr><td><code>backend.conf</code></td><td>Gunicorn and Daphne locations</td></tr>
+  <tr><td><code>frontend.conf</code></td><td>Next.js locations, including <code>/api/</code></td></tr>
+  <tr><td><code>compression.conf</code></td><td>Gzip for text, JSON, JS, XML and SVG</td></tr>
+  <tr><td><code>redirect.conf</code></td><td>HTTP to HTTPS redirect</td></tr>
 </table>
 </div>
 </div>
@@ -62,9 +68,9 @@
 <!-- ══════════ UPSTREAMS ══════════ -->
 <div class="card gc">
 <h2>Upstream Definitions</h2>
-<p style="margin-bottom:16px;">All upstreams bind to <code>127.0.0.1</code> since Docker containers use <code>network_mode: host</code>.</p>
+<p style="margin-bottom:16px;">All upstreams bind to <code>127.0.0.1</code> because the containers run with <code>network_mode: host</code>. The transpiler (Flask on :5000) is called by the backend directly and is not exposed through nginx.</p>
 
-<div class="code-block"><span class="comment"># upstreams.conf</span>
+<div class="code-block"><span class="comment"># /etc/nginx/conf.d/includes/upstreams.conf</span>
 <span class="kw">upstream</span> gunicorn {
     server <span class="str">127.0.0.1:8000</span>;
 }
@@ -80,27 +86,41 @@
 
 <!-- ══════════ ROOT2 NGINX ══════════ -->
 <div class="card gd">
-<h2>Root2 Nginx &mdash; Subdomain Sites</h2>
-<p style="margin-bottom:16px;">Each department subdomain gets its own nginx server block, generated by <a href="confman.html">ConfMan</a> and synced via lsyncd. All listen on <strong>443 SSL</strong> with certificates at <code>/certificates/iitr-certificate/</code>.</p>
+<h2>Root2 Nginx &mdash; Public Websites</h2>
+<p style="margin-bottom:16px;">root2 loads only what <code>/etc/nginx/nginx.conf</code> includes. <code>sites-enabled/</code> is <strong>not</strong> loaded, so files there have no effect.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Included from nginx.conf</th><th>Serves</th></tr>
+  <tr><td><code>sites-available/iitr_main_nginx.conf</code></td><td>iitr.ac.in and www.iitr.ac.in; the main site is <code>conf.d/includes/main-route.conf</code> (alias <code>/home/root2/new_website/</code>)</td></tr>
+  <tr><td><code>sites-available/subdomains/*.conf</code></td><td>38 department and centre subdomains, written by <a href="confman.html">ConfMan</a></td></tr>
+  <tr><td><code>sites-available/josh-subdomains/*.conf</code></td><td>Josh (static upload) sites such as gate, jam, drc</td></tr>
+  <tr><td><code>sites-available/faculty.conf</code>, <code>faculty-subdomains.conf</code></td><td>faculty.iitr.ac.in and <code>&lt;fac&gt;.&lt;dep&gt;.faculty.iitr.ac.in</code></td></tr>
+  <tr><td><code>conf.d/includes/redirect.conf</code>, <code>sites-available/temp.conf</code></td><td>www and HTTP redirects; a few one-off hosts</td></tr>
+</table>
+</div>
+<p style="margin-top:12px;">The <code>subdomains/</code>, <code>josh-subdomains/</code> and short-URL files arrive from the AWS app server through lsyncd. A systemd service on root2 (<code>hot-nginx-reload</code>) watches <code>/etc/nginx/</code> with inotifywait and reloads nginx when they change.</p>
 
 <h3>Per-Subdomain Server Block</h3>
-<div class="code-block"><span class="comment"># Example: cec.iitr.ac.in</span>
+<div class="code-block"><span class="comment"># sites-available/subdomains/ece.conf (trimmed)</span>
 <span class="kw">server</span> {
     listen <span class="str">443 ssl</span>;
-    server_name <span class="str">.cec.iitr.ac.in</span>;
-    root <span class="str">'/home/root2/new_website/cec'</span>;
-    ssl_certificate <span class="path">/certificates/iitr-certificate/...</span>;
-    ssl_certificate_key <span class="path">/certificates/iitr-certificate/...</span>;
+    server_name <span class="str">.ece.iitr.ac.in</span>;
+    root <span class="str">'/home/root2/new_website/Departments/Electronics and Communication Engineering Department'</span>;
+    ssl_certificate <span class="path">/certificates/iitr-certificate/ssl.cert</span>;
     include conf.d/includes/compression.conf;
+    include conf.d/includes/ece.conf;    <span class="comment"># short URLs for this subdomain</span>
+    location / { index <span class="str">'Home.html'</span>; }
 }</div>
+<p style="margin-top:12px;">Every site root, and the main site, has a <code>favicon.ico</code> (the IITR emblem) unless the site ships its own.</p>
 
-<h3>Faculty Profile Aliases</h3>
-<p style="margin-bottom:12px;">Faculty profile pages use location blocks with alias directives to map friendly URLs to specific HTML files:</p>
-<div class="code-block"><span class="comment"># Faculty profile alias</span>
-<span class="kw">location</span> <span class="str">"/~ECE/Faculty_Name"</span> {
-    alias <span class="str">'/home/root2/new_website/Departments/</span>
-        <span class="str">.../Faculty/100XXX.html'</span>;
+<h3>Short URLs (faculty profiles)</h3>
+<p style="margin-bottom:12px;">Short URLs live in <code>conf.d/includes/&lt;subdomain&gt;.conf</code> (one per subdomain) and <code>iitr.conf</code> (for iitr.ac.in). Each maps a friendly path to a published HTML file:</p>
+<div class="code-block"><span class="comment"># conf.d/includes/ee.conf</span>
+<span class="kw">location</span> = <span class="str">"/~EE/manojfee"</span> {
+    default_type <span class="str">"text/html"</span>;
+    alias <span class="str">'/home/root2/new_website/Departments/Electrical Engineering Department/People/Faculty/100571.html'</span>;
 }</div>
+<p style="margin-top:12px;">This directory is a full mirror of the ConfMan output on AWS (<code>delete = true</code>), so a hand edit on root2 is overwritten. Change short URLs through ConfMan.</p>
 
 <h3>Faculty Personal Websites (faculty.iitr.ac.in)</h3>
 <p style="margin-bottom:12px;"><code>faculty.iitr.ac.in</code> is the one subdomain that does <strong>not</strong> serve content produced by the Chakra CMS pipeline. It has no XML source, no transpiler step and no lsyncd stream. Instead nginx serves it straight off the S3 mount, where faculty maintain their own files:</p>
@@ -111,22 +131,32 @@
 
 <!-- ══════════ PROXY PASS RULES ══════════ -->
 <div class="card ge">
-<h2>Cross-Server Proxy Rules</h2>
-<p style="margin-bottom:16px;">Some subdomain routes on root2 need dynamic content from root1. These use <code>proxy_pass</code> rules pointing back to root1&rsquo;s internal IP.</p>
-
-<div class="code-block"><span class="comment"># Dynamic pages served from root1</span>
-<span class="kw">proxy_pass</span> <span class="str">http://192.168.121.230</span>;</div>
-<p style="margin-top:12px;">The <code>conf.d/includes/</code> directory on root2 contains faculty routes and short URL configs, all synced from root1 via lsyncd.</p>
+<h2>Proxy Rules on Root2</h2>
+<p style="margin-bottom:16px;">root2 serves static files only; it does not call back into the app server. The few <code>proxy_pass</code> rules left are in <code>conf.d/includes/faculty-website-route.conf</code>:</p>
+<ul style="margin:0 0 0 18px;">
+  <li>a handful of old faculty pages proxied to a legacy internal web server;</li>
+  <li>one external Google Sites page;</li>
+  <li><code>/favicon.ico</code> on faculty routes, proxied to <code>https://iitr.ac.in/favicon.ico</code>.</li>
+</ul>
 </div>
 
 <!-- ══════════ RATE LIMITING ══════════ -->
 <div class="card ga">
 <h2>Rate Limiting</h2>
-<p style="margin-bottom:16px;">Root1 nginx enforces rate limiting to protect backend services from excessive requests.</p>
+<p style="margin-bottom:16px;">AWS nginx defines two zones per client IP. The zone names still carry the old <code>canvas</code> prefix.</p>
 
-<div class="code-block"><span class="comment"># Rate limit zone definition</span>
-<span class="kw">limit_req_zone</span> $binary_remote_addr zone=<span class="str">chakra_zone</span>:10m rate=<span class="str">16r/s</span>;</div>
-<p style="margin-top:12px;">Limits to <strong>16 requests per second per IP address</strong>. This applies to all proxied routes (backend API, frontend, WebSocket upgrade requests).</p>
+<div class="code-block"><span class="comment"># /etc/nginx/sites-enabled/chakra.conf</span>
+<span class="kw">limit_req_zone</span> $binary_remote_addr zone=<span class="str">canvas_zone</span>:16m rate=<span class="str">16r/s</span>;
+<span class="kw">limit_req_zone</span> $binary_remote_addr zone=<span class="str">canvas_api_zone</span>:16m rate=<span class="str">300r/s</span>;</div>
+<div class="table-wrap" style="margin-top:12px;">
+<table>
+  <tr><th>Location</th><th>Zone</th><th>Burst</th></tr>
+  <tr><td>Backend API, <code>/ws</code></td><td>canvas_zone (16r/s)</td><td>24</td></tr>
+  <tr><td>Editor UI <code>/</code></td><td>canvas_zone (16r/s)</td><td>200</td></tr>
+  <tr><td><code>/api/</code> through Next.js</td><td>canvas_api_zone (300r/s)</td><td>3000</td></tr>
+</table>
+</div>
+<p style="margin-top:12px;">root2 subdomain configs also declare a 16r/s zone per subdomain.</p>
 </div>
 
 </div>

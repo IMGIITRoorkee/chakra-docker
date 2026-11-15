@@ -193,7 +193,7 @@
   <div class="stat"><div class="v">5</div><div class="l">lsyncd streams</div></div>
   <div class="stat"><div class="v">4,360</div><div class="l">published pages</div></div>
   <div class="stat"><div class="v">609</div><div class="l">editor accounts</div></div>
-  <div class="stat"><div class="v">320+</div><div class="l">UI components</div></div>
+  <div class="stat"><div class="v">80</div><div class="l">component types</div></div>
 </div>
 </div>
 
@@ -201,12 +201,12 @@
 <h2 id="section-index" style="margin-top:40px;">Section Index</h2>
 <div class="g3">
   <a href="system-overview.html" class="hero-card"><span class="card-icon" style="color:var(--blue);">&#9670;</span><h3 style="color:var(--blue)">System Overview</h3><p>Complete architecture diagram, Docker mounts, process management, and how all pieces connect.</p></a>
-  <a href="two-servers.html" class="hero-card"><span class="card-icon" style="color:var(--violet);">&#9670;</span><h3 style="color:var(--violet)">Two-Server Setup</h3><p>root1 (bifrost) and root2 (edith). lsyncd config, SSH keys, sync streams, inotifywait.</p></a>
+  <a href="two-servers.html" class="hero-card"><span class="card-icon" style="color:var(--violet);">&#9670;</span><h3 style="color:var(--violet)">Two-Server Setup</h3><p>The AWS app server and root2 (edith). Reverse tunnel, lsyncd streams, hot nginx reload.</p></a>
   <a href="image-lifecycle.html" class="hero-card"><span class="card-icon" style="color:var(--orange);">&#9670;</span><h3 style="color:var(--orange)">Image Lifecycle</h3><p>Upload, preview, publish, sync, delivery. How images flow through 3 copies across 2 servers.</p></a>
   <a href="deployment.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Deployment Guide</h3><p>Jenkins jobs, manual fallbacks, Docker restart, transpiler rebuild, and everything-went-wrong recovery.</p></a>
   <a href="backend.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Backend (Django)</h3><p>Gunicorn, Daphne, Celery, supervisord. Environment variables, middleware, URL routing.</p></a>
   <a href="transpiler.html" class="hero-card"><span class="card-icon" style="color:var(--red);">&#9670;</span><h3 style="color:var(--red)">Transpiler (Core)</h3><p>Scala binary, Flask wrapper, components.json, replaceAssets, ImageSpec, the preview/publish split.</p></a>
-  <a href="nginx.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Nginx &amp; Routing</h3><p>How chakra.channeli.in routes on root1 vs. how subdomain.iitr.ac.in serves on root2.</p></a>
+  <a href="nginx.html" class="hero-card"><span class="card-icon" style="color:var(--green);">&#9670;</span><h3 style="color:var(--green)">Nginx &amp; Routing</h3><p>How chakra.channeli.in routes on the AWS host nginx vs. how subdomain.iitr.ac.in serves on root2.</p></a>
   <a href="lsyncd.html" class="hero-card"><span class="card-icon" style="color:var(--amber);">&#9670;</span><h3 style="color:var(--amber)">lsyncd &amp; Sync</h3><p>The 5 rsync streams, lsyncd.conf.lua, SSH key auth, what syncs and what doesn't.</p></a>
   <a href="confman.html" class="hero-card"><span class="card-icon" style="color:var(--violet);">&#9670;</span><h3 style="color:var(--violet)">ConfMan</h3><p>Dynamic reverse proxy config generation. Subdomain approval workflow, template rendering.</p></a>
 </div>

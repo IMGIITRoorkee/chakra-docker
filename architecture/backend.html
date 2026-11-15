@@ -11,60 +11,61 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Backend (Django)</span></div>
 
 <h1>Backend <em>(Django)</em></h1>
-<p class="page-subtitle">Django application server &mdash; APIs, auth, file management, and publish workflow</p>
-
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<p class="page-subtitle">Django application server on the AWS app server - APIs, auth, file management and the publish workflow</p>
 
 <!-- ══════════ OVERVIEW ══════════ -->
 <div class="card ga">
 <h2>Container Overview</h2>
-<p style="margin-bottom:16px;">The backend runs in a Docker container using the <code>chakra-backend:latest</code> image. Inside the container, <strong>supervisord</strong> manages three long-running processes that together handle HTTP requests, WebSocket connections, and background tasks.</p>
+<p style="margin-bottom:16px;">The backend runs in the <code>chakra-docker_chakra-backend_1</code> container (image <code>chakra-backend:latest</code>, <strong>Python 3.8</strong>, <code>network_mode: host</code>). Inside it, <strong>supervisord</strong> runs three processes: HTTP, WebSocket and background tasks. The checkout is <code>~/chakra-docker/codebase/chakra-backend</code>; Jenkins pulls it and restarts the container when <code>master</code> changes (see <a href="deployment.html">Deployment</a>).</p>
 
 <h3>Startup Command</h3>
 <div class="code-block"><span class="kw">source</span> chakra_backend/.env <span class="kw">&amp;&amp;</span> supervisord <span class="str">-c</span> /supervisord.conf</div>
+<p style="margin-top:12px;">Because the <code>.env</code> is <em>sourced</em> by bash, any value containing <code>$</code> is shell-expanded before Django sees it. That matters for <code>SECRET_FLASK</code>, which must match the transpiler (see <a href="aws-production.html">AWS production</a>, "Secrets that must agree").</p>
 </div>
 
 <!-- ══════════ PROCESS MANAGEMENT ══════════ -->
 <div class="card gb">
 <h2>Process Management (supervisord)</h2>
-<p style="margin-bottom:16px;">Supervisord keeps all three processes running and restarts them on failure. Each process binds to a different port on the host network.</p>
+<p style="margin-bottom:16px;">Config: <code>supervisor.d/supervisord.conf</code> in the checkout. It is server-specific and locked against changes by the config guard.</p>
 
 <div class="g3">
-  <div class="step"><div class="n">HTTP</div><h4>Gunicorn</h4><p>Port <strong>8000</strong>. 5 workers, <code>gthread</code> worker class, 120s timeout. Handles all Django REST API traffic.</p></div>
-  <div class="step"><div class="n">WS</div><h4>Daphne</h4><p>Port <strong>8001</strong>. ASGI server for WebSocket connections. Powers real-time editor features.</p></div>
-  <div class="step"><div class="n">BG</div><h4>Celery</h4><p>Background task worker. Uses <strong>RabbitMQ</strong> as message broker. Runs scheduled cron jobs and async tasks.</p></div>
+  <div class="step"><div class="n">HTTP</div><h4>Gunicorn</h4><p>Port <strong>8000</strong>, <strong>3 workers</strong>. Serves the Django REST API and admin.</p></div>
+  <div class="step"><div class="n">WS</div><h4>Daphne</h4><p>Port <strong>8001</strong>. ASGI server for WebSocket connections.</p></div>
+  <div class="step"><div class="n">BG</div><h4>Celery</h4><p>Worker with <code>autorestart=true</code>. Broker: the <strong>RabbitMQ</strong> container on localhost:5672. Runs short-URL config generation, Hindi conversion and search index updates.</p></div>
 </div>
+<p style="margin-top:12px;">History: until November 2026 Celery never ran on this server, because the broker credentials were missing from the <code>.env</code> and the worker exited cleanly without a restart. The credentials must match <code>rabbitmq/message_broker.env</code>.</p>
 </div>
 
 <!-- ══════════ DJANGO APPS ══════════ -->
 <div class="card gc">
 <h2>Key Django Apps</h2>
-<p style="margin-bottom:16px;">The backend is organized into several Django apps, each responsible for a distinct area of functionality.</p>
+<p style="margin-bottom:16px;">The backend is organized into four project apps.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>App</th><th>Purpose</th><th>Key Features</th></tr>
-  <tr><td><code>generator</code></td><td>Page management</td><td>Publish, preview, image upload, XML/HTML pipeline</td></tr>
+  <tr><td><code>generator</code></td><td>Page management</td><td>Pages, drafts, preview, publish, headers, menus, footers, templates, search</td></tr>
   <tr><td><code>filemanager</code></td><td>File &amp; folder CRUD</td><td>Zip upload, folder download, directory browsing</td></tr>
-  <tr><td><code>chakra_auth</code></td><td>Authentication</td><td>OAuth via <strong>channeli.in</strong>, session management</td></tr>
-  <tr><td><code>confman</code></td><td>Reverse proxy config</td><td>Generates nginx configs for subdomains and short URLs</td></tr>
-  <tr><td><code>website</code></td><td>Page rendering</td><td>Serves rendered pages, template management</td></tr>
+  <tr><td><code>chakra_auth</code></td><td>Authentication</td><td>OAuth via <strong>channeli.in</strong>, sessions, node and page maintainer permissions</td></tr>
+  <tr><td><code>confman</code></td><td>Reverse proxy config</td><td>Generates nginx configs for subdomains and short URLs (<a href="confman.html">ConfMan</a>)</td></tr>
 </table>
 </div>
+
+<h3>Saving a page</h3>
+<p>Saves write <code>&lt;page&gt;.xml.draft</code> next to the published <code>&lt;page&gt;.xml</code>. Creating the draft row and writing the file happen in one database transaction, so a failed save leaves no draft row pointing at a missing file. Empty links (<code>link=""</code>) pass validation. Publishing is described in <a href="image-lifecycle.html">Image Lifecycle</a>.</p>
 </div>
 
 <!-- ══════════ URL ROUTING ══════════ -->
 <div class="card gd">
 <h2>URL Routing</h2>
-<p style="margin-bottom:16px;">Nginx on root1 routes incoming requests to the appropriate backend process based on URL prefix.</p>
+<p style="margin-bottom:16px;">The host nginx on the AWS app server routes requests by URL prefix. The editor calls the API as <code>/api/...</code>; Next.js rewrites that to the backend. Full table on the <a href="nginx.html">Nginx</a> page.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>URL Pattern</th><th>Destination</th><th>Process</th></tr>
-  <tr><td><code>/chakra_auth/*</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
-  <tr><td><code>/generator/*</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
-  <tr><td><code>/filemanager/*</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
-  <tr><td><code>/ws/*</code></td><td>ASGI consumers</td><td>Daphne :8001</td></tr>
+  <tr><td><code>/chakra_auth</code>, <code>/generator</code>, <code>/filemanager</code>, <code>/confman</code>, <code>/admin</code></td><td>Django views</td><td>Gunicorn :8000</td></tr>
+  <tr><td><code>/ws</code></td><td>ASGI consumers</td><td>Daphne :8001</td></tr>
+  <tr><td><code>/api/*</code></td><td>Next.js rewrite to the backend</td><td>Next.js :3000, then Gunicorn</td></tr>
 </table>
 </div>
 </div>
@@ -72,51 +73,55 @@
 <!-- ══════════ ENV VARS ══════════ -->
 <div class="card ge">
 <h2>Key Environment Variables</h2>
-<p style="margin-bottom:16px;">Configured in <code>chakra_backend/.env</code> (created from <code>stencil.env</code>). Loaded by Django at startup.</p>
+<p style="margin-bottom:16px;">Configured in <code>chakra_backend/.env</code> (created from <code>stencil.env</code>). The file is server-only and locked; values are not in git.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Variable</th><th>Example</th><th>Purpose</th></tr>
-  <tr><td><code>PERSONAL_ROOT</code></td><td><code>/website</code></td><td>Base path for all website content</td></tr>
-  <tr><td><code>XML_ROOT_URL</code></td><td><code>/website/XML/</code></td><td>XML source content root</td></tr>
-  <tr><td><code>HTML_ROOT_URL</code></td><td><code>/website/HTML/</code></td><td>Published HTML output root</td></tr>
-  <tr><td><code>PREVIEW_IMAGE_PATH</code></td><td><code>/media_files/preview</code></td><td>Temporary preview image storage</td></tr>
-  <tr><td><code>SERVER_URL</code></td><td><code>http://127.0.0.1:5000</code></td><td>Flask transpiler endpoint</td></tr>
-  <tr><td><code>TRANSPILER_PATH</code></td><td>Path to chakra-core dir</td><td>Working directory for Scala binary</td></tr>
-  <tr><td><code>MEDIA_ROOT</code></td><td><code>/media_files/</code></td><td>Django media root (nginx serves as /media)</td></tr>
-  <tr><td><code>SECRET_FLASK</code></td><td>(secret)</td><td>Auth token for transpiler API</td></tr>
+  <tr><td><code>PERSONAL_ROOT</code></td><td><code>/website</code></td><td>Base path for all website content (bind-mounted from the checkout's <code>website/</code>)</td></tr>
+  <tr><td><code>XML_ROOT_URL</code>, <code>HTML_ROOT_URL</code></td><td><code>/website/XML/</code></td><td>XML source and published HTML roots</td></tr>
+  <tr><td><code>PREVIEW_IMAGE_PATH</code></td><td><code>/media_files/preview</code></td><td>Preview image copies, served at <code>/media/preview/</code></td></tr>
+  <tr><td><code>SERVER_URL</code></td><td><code>http://127.0.0.1:5000</code></td><td>Transpiler (Flask) endpoint on the host</td></tr>
+  <tr><td><code>TRANSPILER_PATH</code>, <code>TRANSPILER_COMPONENTS_PATH</code></td><td>chakra-core paths</td><td>Transpiler jar and <code>components.json</code></td></tr>
+  <tr><td><code>SECRET_FLASK</code></td><td>(secret)</td><td>Token the transpiler checks on every call</td></tr>
+  <tr><td><code>RABBITMQ_DEFAULT_USER</code>, <code>RABBITMQ_DEFAULT_PASS</code></td><td>(secret)</td><td>Celery broker login</td></tr>
+  <tr><td><code>ALLOWED_HOSTS</code>, <code>TRUSTED_ORIGIN</code>, <code>OAUTH_REDIRECT_URI</code>, <code>CONFMAN_BASE_URL</code></td><td><code>chakra.channeli.in</code></td><td>Must name the current editor host</td></tr>
+  <tr><td><code>IITR_BASE_WEBSITE</code>, <code>CMSREDESIGN_BASE_URL</code></td><td><code>https://iitr.ac.in</code>, <code>https://cmsredesign.channeli.in</code></td><td>Public site and component library hosts</td></tr>
 </table>
 </div>
+<p style="margin-top:12px;"><code>MEDIA_ROOT</code> is fixed to <code>/media_files/</code> in settings, not read from the <code>.env</code>.</p>
 </div>
 
 <!-- ══════════ CELERY CRON ══════════ -->
 <div class="card ga">
-<h2>Celery Cron Jobs</h2>
-<p style="margin-bottom:16px;">Celery Beat schedules periodic tasks via RabbitMQ. These run automatically without manual intervention.</p>
+<h2>Scheduled Jobs</h2>
+<p style="margin-bottom:16px;">Two jobs are declared in <code>settings.CRONJOBS</code> through <code>django-crontab</code>:</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Schedule</th><th>Function</th><th>Purpose</th></tr>
-  <tr><td>Every 60 min</td><td><code>generator.cron.my_scheduled_job</code></td><td>Runs <code>tmp_clear.sh</code> &mdash; deletes preview images older than 1 day</td></tr>
+  <tr><td>Every 60 min</td><td><code>generator.cron.my_scheduled_job</code></td><td>Runs <code>tmp_clear.sh</code> - deletes preview images older than 1 day</td></tr>
   <tr><td>Every 720 min</td><td><code>generator.cron.notice_list_publish_cron</code></td><td>Auto-publishes notice list pages</td></tr>
 </table>
 </div>
+<p style="margin-top:12px;"><strong>Known gap:</strong> django-crontab installs jobs into the system crontab, and the backend image has no <code>cron</code>. Neither job runs on the AWS app server, so preview images accumulate and notice lists are republished only by hand.</p>
 </div>
 
 <!-- ══════════ LOGS ══════════ -->
 <div class="card gb">
 <h2>Logging</h2>
-<p style="margin-bottom:16px;">All process logs are written to <code>/web_server_logs/</code> inside the container (bind-mounted to host).</p>
+<p style="margin-bottom:16px;">Logs are written to <code>/web_server_logs/</code> inside the container, bind-mounted to <code>web_server_logs/</code> in the checkout.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Log File</th><th>Source</th></tr>
-  <tr><td><code>/web_server_logs/gunicorn.log</code></td><td>Gunicorn HTTP server</td></tr>
-  <tr><td><code>/web_server_logs/daphne.log</code></td><td>Daphne WebSocket server</td></tr>
-  <tr><td><code>/web_server_logs/celery.log</code></td><td>Celery background worker</td></tr>
-  <tr><td><code>/web_server_logs/supervisord.log</code></td><td>Supervisord process manager</td></tr>
+  <tr><td><code>supervisord_logs/gunicorn-stderr.log</code></td><td>Django errors and tracebacks (the first place to look for a 500)</td></tr>
+  <tr><td><code>supervisord_logs/daphne-*.log</code>, <code>daphne_logs/access.log</code></td><td>Daphne WebSocket server</td></tr>
+  <tr><td><code>supervisord_logs/celery-*.log</code></td><td>Celery worker</td></tr>
+  <tr><td><code>django.log</code>, <code>generator.log</code></td><td>Application loggers</td></tr>
 </table>
 </div>
+<p style="margin-top:12px;">Request logs for the editor are in the host nginx logs. One-off maintenance scripts and their backups (republish runs, dry-run results) are also kept in <code>web_server_logs/</code>.</p>
 </div>
 
 </div>
