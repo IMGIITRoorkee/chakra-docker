@@ -13,6 +13,8 @@
 <h1>System <em>Overview</em></h1>
 <p class="page-subtitle">Production servers (bifrost + edith) &mdash; April 2026</p>
 
+<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+
 <div class="g4" style="margin-bottom:36px;">
   <div class="stat"><div class="v">2</div><div class="l">prod servers</div></div>
   <div class="stat"><div class="v">6</div><div class="l">Docker containers</div></div>

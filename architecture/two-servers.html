@@ -13,6 +13,8 @@
 <h1>Two-Server <em>Setup</em></h1>
 <p class="page-subtitle">root1 (bifrost) + root2 (edith) &mdash; connected by lsyncd over SSH</p>
 
+<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+
 <div class="card gb">
 <h2>Why Two Servers?</h2>
 <p>Chakra separates <strong>application logic</strong> from <strong>public-facing delivery</strong>. root1 handles all CMS operations (editing, preview, publish, database). root2 is a hardened static file server that only serves pre-built HTML to the public internet.</p>

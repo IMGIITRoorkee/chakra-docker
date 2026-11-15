@@ -29,9 +29,9 @@
 <h2>System Map</h2>
 <svg viewBox="0 0 960 520" fill="none" xmlns="http://www.w3.org/2000/svg">
 
-  <!-- root1 / bifrost -->
+  <!-- Application server -->
   <rect x="15" y="10" width="580" height="500" rx="14" fill="#12151c" stroke="#3a4556" stroke-width="1"/>
-  <text x="35" y="36" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600">root1 / bifrost &mdash; Application Server</text>
+  <text x="35" y="36" fill="#f0a030" font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600">AWS app server (chakra.channeli.in) - root1 retired Nov 2026</text>
 
   <!-- Docker zone -->
   <rect x="30" y="55" width="380" height="200" rx="10" fill="#181c2680" stroke="#5ba4e6" stroke-width="1.2" stroke-dasharray="5 3"/>
@@ -170,7 +170,7 @@
   </div>
   <div>
     <h3>Two-Server Architecture</h3>
-    <p><strong>root1 (bifrost)</strong> runs all application logic in Docker. <strong>root2 (edith)</strong> is a pure static nginx server. They're connected by <strong>lsyncd</strong> &mdash; 5 continuous rsync streams over SSH that keep published content, Josh user sites, and nginx configs in sync.</p>
+    <p>The <strong>AWS app server</strong> (chakra.channeli.in; root1 / bifrost until it failed in November 2026, see <a href="aws-production.html">AWS production</a>) runs all application logic in Docker. <strong>root2 (edith)</strong> is a pure static nginx server. They're connected by <strong>lsyncd</strong> &mdash; 5 continuous rsync streams over SSH that keep published content, Josh user sites, and nginx configs in sync.</p>
   </div>
   <div>
     <h3>ConfMan</h3>
@@ -182,15 +182,17 @@
 <!-- Stats -->
 <div class="card gd fade-in fade-in-d3">
 <h2>By the Numbers</h2>
-<p style="margin-bottom:16px;">Production metrics as of April 2026.</p>
+<p style="margin-bottom:16px;">Production metrics as of 15 November 2026.</p>
 <div class="g4">
-  <div class="stat"><div class="v">15,280</div><div class="l">XML asset files</div></div>
-  <div class="stat"><div class="v">11,869</div><div class="l">HTML asset files</div></div>
-  <div class="stat"><div class="v">95 GB</div><div class="l">website/ on root1</div></div>
-  <div class="stat"><div class="v">70 GB</div><div class="l">new_website/ on root2</div></div>
-  <div class="stat"><div class="v">6</div><div class="l">Docker containers</div></div>
-  <div class="stat"><div class="v">18+</div><div class="l">subdomain sites</div></div>
+  <div class="stat"><div class="v">17,492</div><div class="l">XML asset files</div></div>
+  <div class="stat"><div class="v">17,307</div><div class="l">HTML asset files</div></div>
+  <div class="stat"><div class="v">111 GB</div><div class="l">website/ on the AWS app server</div></div>
+  <div class="stat"><div class="v">87 GB</div><div class="l">new_website/ on root2</div></div>
+  <div class="stat"><div class="v">5</div><div class="l">Docker containers</div></div>
+  <div class="stat"><div class="v">66</div><div class="l">subdomain sites</div></div>
   <div class="stat"><div class="v">5</div><div class="l">lsyncd streams</div></div>
+  <div class="stat"><div class="v">4,360</div><div class="l">published pages</div></div>
+  <div class="stat"><div class="v">609</div><div class="l">editor accounts</div></div>
   <div class="stat"><div class="v">320+</div><div class="l">UI components</div></div>
 </div>
 </div>

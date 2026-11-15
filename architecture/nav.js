@@ -18,6 +18,7 @@
     { label: 'Frontend (Next.js)', href: 'frontend.html', dot: '#5ba4e6', sub: true },
     { label: 'ConfMan', href: 'confman.html', dot: '#9b7be8', sub: true },
     { section: 'Operations' },
+    { label: 'AWS Production', href: 'aws-production.html', dot: '#e85c5c' },
     { label: 'Nginx & Routing', href: 'nginx.html', dot: '#4cc98a' },
     { label: 'lsyncd & Sync', href: 'lsyncd.html', dot: '#f0a030' },
     { label: 'Backups & S3', href: 'backups.html', dot: '#44c8cc' },
