@@ -4,7 +4,7 @@
 set -uo pipefail
 
 BACKEND=${BACKEND_CONTAINER:-chakra-docker_chakra-backend_1}
-HOST=${CHAKRA_HOST:-canvas.channeli.in}
+HOST=${CHAKRA_HOST:-chakra.channeli.in}
 CORE_URL=${CORE_URL:-http://127.0.0.1:5000}
 
 failed=0
