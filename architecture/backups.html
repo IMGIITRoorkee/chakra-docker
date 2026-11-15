@@ -11,36 +11,46 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Backups &amp; S3</span></div>
 
 <h1>Backups <em>&amp; S3</em></h1>
-<p class="page-subtitle">Database dumps, incremental backups, and S3 mounts on both servers</p>
+<p class="page-subtitle">Database dumps and file backups from the AWS app server to S3, and the S3 mount on root2 - as of 15 November 2026</p>
 
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<div class="g4" style="margin-bottom:36px;">
+  <div class="stat"><div class="v">6 h</div><div class="l">database dump interval</div></div>
+  <div class="stat"><div class="v">5.4 MB</div><div class="l">compressed dump</div></div>
+  <div class="stat"><div class="v">7</div><div class="l">dumps kept on the server</div></div>
+  <div class="stat"><div class="v">5 min</div><div class="l">health check interval</div></div>
+</div>
 
 <div class="card ga">
 <h2>Backup Schedule</h2>
-<p style="margin-bottom:16px;">All backups run from root1 (bifrost) via cron. Destinations are S3 buckets mounted on both servers.</p>
+<p style="margin-bottom:16px;">All backups run from the AWS app server via cron, using <code>~/chakra-backup/chakra-backup.sh</code>. They go to the IMG S3 bucket under <code>chakra-aws-backups/</code>. The instance role can upload but not delete, so the backups are append-only.</p>
 <div class="table-wrap">
 <table>
-  <tr><th>What</th><th>Script</th><th>Schedule</th><th>Destination</th></tr>
-  <tr><td>PostgreSQL full dump</td><td><code>database_backup.sh</code></td><td>Weekly (Sunday midnight)</td><td>S3 bucket</td></tr>
-  <tr><td>Incremental data backup</td><td><code>incremental_backup_to_aws_script.sh</code></td><td>Daily (3 AM)</td><td>S3 bucket</td></tr>
+  <tr><th>What</th><th>Command</th><th>Schedule</th><th>Destination</th></tr>
+  <tr><td>PostgreSQL full dump</td><td><code>chakra-backup.sh db</code></td><td>Every 6 hours (:15)</td><td><code>db/YYYY/MM/chakradb-&lt;time&gt;.sql.gz</code> + last 7 dumps on the server</td></tr>
+  <tr><td>XML, HTML, JoshUsers, nginx configs, media (no previews)</td><td><code>chakra-backup.sh files</code></td><td>Daily (21:30 UTC)</td><td><code>files/</code> (<code>s3 sync</code>, so files deleted on the server stay in S3)</td></tr>
+  <tr><td>Server-only config (<code>.env</code> files, nginx, supervisord, start scripts)</td><td><code>chakra-env-guard.sh snapshot</code></td><td>On every change</td><td><code>env/&lt;time&gt;.tgz</code> (server-side encrypted) + <code>~/chakra-env-backup/</code></td></tr>
   <tr><td>Published content</td><td>lsyncd (continuous)</td><td>Real-time</td><td>root2 filesystem (acts as a live copy)</td></tr>
-  <tr><td>Preview image cleanup</td><td><code>tmp_clear.sh</code> (Celery)</td><td>Every 60 min</td><td>Deletes files &gt; 1 day from <code>media_files/preview/</code></td></tr>
 </table>
 </div>
+<p style="margin-top:12px;">Each successful run writes <code>status/last-success-db.txt</code> or <code>last-success-files.txt</code>; failures are logged to <code>~/backups-local/backup.log</code>. A dump smaller than 1 MB is treated as broken and the run fails.</p>
+</div>
+
+<div class="card gb">
+<h2>Monitoring</h2>
+<p style="margin-bottom:16px;"><code>~/chakra-backup/chakra-health.sh</code> runs every 5 minutes and publishes CloudWatch metrics in <code>Chakra/Health</code>. <code>BackupDbFresh</code> and <code>BackupFilesFresh</code> alert when a backup is overdue; they read both <code>backup.log</code> and the rotated <code>backup.log.1</code>. The full metric list is on <a href="aws-production.html">AWS production</a>.</p>
 </div>
 
 <div class="card gb">
 <h2>S3 Mounts</h2>
-<p style="margin-bottom:16px;">Both servers mount S3 buckets via <strong>s3fs</strong> (FUSE-based filesystem).</p>
+<p style="margin-bottom:16px;">Only root2 mounts S3, via <strong>s3fs</strong> (FUSE-based filesystem), to serve faculty websites. The AWS app server talks to S3 through the AWS CLI instead.</p>
 
 <div class="g2">
   <div>
-    <h3>root1 (bifrost)</h3>
+    <h3>AWS app server</h3>
     <div class="table-wrap">
     <table>
-      <tr><th>Mount Point</th><th>Contents</th></tr>
-      <tr><td><code>/home/root1/s3bucket</code></td><td>Shared S3 bucket &mdash; backups, database dumps</td></tr>
-      <tr><td><code>/home/root1/s3bucket2</code></td><td>Secondary S3 bucket &mdash; incremental backups</td></tr>
+      <tr><th>Access</th><th>Use</th></tr>
+      <tr><td>AWS CLI, instance role</td><td>Upload backups and config snapshots (no delete)</td></tr>
     </table>
     </div>
   </div>
@@ -49,14 +59,14 @@
     <div class="table-wrap">
     <table>
       <tr><th>Mount Point</th><th>Contents</th></tr>
-      <tr><td><code>/home/root2/s3bucket</code></td><td>Shared S3 bucket (256 TB virtual) - the <em>same</em> bucket root1 mounts</td></tr>
+      <tr><td><code>/home/root2/s3bucket</code></td><td>The shared IMG bucket, mounted read-write</td></tr>
     </table>
     </div>
     <p style="margin-top:8px;">Key paths on root2's S3 mount:</p>
     <ul>
       <li><code>public/Websites/</code> - Faculty personal websites (served publicly by nginx)</li>
-      <li><code>chakra-backups/</code> - Database backup archives</li>
-      <li><code>incremantal-backups/</code> - Incremental data backups (directory name is misspelled on disk)</li>
+      <li><code>chakra-aws-backups/</code> - Current Chakra backups</li>
+      <li><code>chakra-backups/</code>, <code>incremantal-backups/</code> - root1-era backups (directory name is misspelled on disk)</li>
       <li><code>omniport-backups/</code> - Backups belonging to Omniport, a separate system</li>
     </ul>
   </div>
@@ -69,7 +79,7 @@
 <p style="margin-bottom:16px;">This is the single most important thing to understand about the S3 setup, and it is easy to miss: <strong>the bucket that serves live public websites is the same bucket that stores database dumps and system backups.</strong> There is no separate "public assets" bucket. The only thing separating world-readable content from backup archives is which prefix nginx is pointed at.</p>
 
 <h3>Actual Bucket Layout</h3>
-<div class="code-block"><span class="path">/home/root2/s3bucket/</span>          <span class="comment"># also mounted at /home/root1/s3bucket</span>
+<div class="code-block"><span class="path">/home/root2/s3bucket/</span>          <span class="comment"># s3fs mount on root2</span>
 
   <span class="str">public/</span>                     <span class="comment"># parent of the served dirs</span>
     <span class="str">Websites/</span>                <span class="comment"># SERVED - document root for faculty.iitr.ac.in</span>
@@ -82,8 +92,9 @@
   <span class="str">protected/</span>                  <span class="comment"># NOT referenced by nginx - dormant</span>
 
   <span class="comment"># ── everything below is BACKUP data in the same bucket, ABOVE the served root ──</span>
-  <span class="str">chakra-backups/</span>             <span class="comment"># Chakra PostgreSQL dumps</span>
-  <span class="str">incremantal-backups/</span>        <span class="comment"># daily incrementals (sic)</span>
+  <span class="str">chakra-aws-backups/</span>         <span class="comment"># current Chakra backups from the AWS server (see above)</span>
+  <span class="str">chakra-backups/</span>             <span class="comment"># root1-era Chakra dumps, up to Dec 2025</span>
+  <span class="str">incremantal-backups/</span>        <span class="comment"># root1-era daily copies, to Jul 2026 (sic)</span>
   <span class="str">omniport-backup/</span>            <span class="comment"># Omniport - a separate system</span>
   <span class="str">omniportBackup/</span>             <span class="comment"># ...and two more naming variants</span>
   <span class="str">omniport-backups/</span>
@@ -96,7 +107,7 @@
 
 <p style="margin-top:14px;">Every nginx <code>root</code>/<code>alias</code> on root2 that touches this bucket points at <code>public/Websites/</code> (faculty.iitr.ac.in) or <code>public/FacSpace/</code> (via <code>location /media/facspace/</code>) - never at <code>public/</code> or the bucket root. <code>autoindex</code> is off everywhere and <code>protected/</code> is not referenced. The backup directories sit <em>above</em> the served root and nginx normalises <code>..</code>, so <strong>the backups are not reachable over HTTP through nginx.</strong></p>
 
-<p style="margin-top:10px;">The S3 endpoint is closed too. Anonymous requests to <code>img-icc-bucket</code> return <code>403 AccessDenied</code> - for <code>chakra-backups/</code>, for an anonymous bucket listing, and for the <code>public/Websites/</code> prefix. The bucket is not world-readable at its native S3 endpoint, and faculty sites are reachable only <em>through</em> nginx's credentialed s3fs mount, not directly. Backups are not exposed at either layer.</p>
+<p style="margin-top:10px;">The S3 endpoint is closed too. Anonymous requests to <code>img-icc-bucket</code> return <code>403 AccessDenied</code> - for <code>chakra-backups/</code> and <code>chakra-aws-backups/</code>, for an anonymous bucket listing, and for the <code>public/Websites/</code> prefix. The bucket is not world-readable at its native S3 endpoint, and faculty sites are reachable only <em>through</em> nginx's credentialed s3fs mount, not directly. Backups are not exposed at either layer.</p>
 
 <p style="margin-top:10px;">This reflects the current setup, not a structural guarantee: public content and backups still share one bucket. The separation would break if the bucket's public-access-block / policy were loosened, or if an nginx <code>root</code> were moved up a level. Neither is enforced by anything in Chakra.</p>
 
@@ -111,7 +122,7 @@
   <li><strong>The s3fs mount is not in <code>/etc/fstab</code></strong> - it is mounted by some other mechanism (likely a systemd <code>.mount</code> unit), so how it survives reboot and where its credentials live should be documented.</li>
 </ul>
 
-<p style="margin-top:14px;">The mount is s3fs onto bucket <code>img-icc-bucket</code> in region <code>ap-south-1</code>, mounted <code>-o allow_other</code> as root. Both root1 and root2 mount this same bucket.</p>
+<p style="margin-top:14px;">The mount is s3fs onto bucket <code>img-icc-bucket</code> in region <code>ap-south-1</code>, mounted <code>-o allow_other</code> as root. The AWS app server does not mount it; it writes backups with the AWS CLI and an instance role that can upload but not delete.</p>
 
 <h3>Still to Document</h3>
 <div class="table-wrap">
@@ -119,40 +130,39 @@
   <tr><th>Question</th><th>Where to look</th></tr>
   <tr><td>Where the s3fs credentials live, and how the mount survives reboot (it is not in <code>/etc/fstab</code>)</td><td>The systemd <code>.mount</code> unit and <code>passwd-s3fs</code> / <code>.passwd-s3fs</code></td></tr>
   <tr><td>Whether any lifecycle/expiry rule exists on the dated tarballs</td><td><code>aws s3api get-bucket-lifecycle-configuration --bucket img-icc-bucket</code></td></tr>
-  <tr><td>Which job writes each <code>omniport-backup*</code> variant</td><td><code>crontab -l</code> on root1 and the Omniport host</td></tr>
+  <tr><td>Which job writes each <code>omniport-backup*</code> variant</td><td>The Omniport host's crontab</td></tr>
 </table>
 </div>
 </div>
 
 <div class="card gc">
 <h2>Database Backup</h2>
-<p style="margin-bottom:16px;">PostgreSQL runs in Docker container <code>chakra-docker_database_1</code>. Weekly full dumps are stored in S3.</p>
+<p style="margin-bottom:16px;">PostgreSQL runs in Docker container <code>chakra-docker_database_1</code>. Full dumps go to S3 every 6 hours.</p>
 
 <h3>How It Works</h3>
 <ol>
-  <li>Cron triggers <code>/home/root1/database_backup.sh</code> on Sunday midnight</li>
-  <li>Script runs <code>pg_dump</code> inside the Docker container</li>
-  <li>Dump file is written to the S3 mount at <code>/home/root1/s3bucket/chakra-backups/</code></li>
-  <li>Old backups are retained (no automatic rotation observed)</li>
+  <li>Cron runs <code>chakra-backup.sh db</code> at minute 15 of every sixth hour</li>
+  <li>The script runs <code>pg_dump</code> inside the database container and gzips the output</li>
+  <li>Dumps under 1 MB fail the run; good dumps are uploaded to <code>chakra-aws-backups/db/YYYY/MM/</code></li>
+  <li>The server keeps the newest 7 dumps in <code>~/backups-local/db/</code> for fast restores; S3 keeps all of them</li>
 </ol>
 
 <h3>Manual Backup</h3>
-<div class="code-block"><span class="comment"># Run pg_dump inside the database container</span>
-docker exec chakra-docker_database_1 \
-  pg_dump -U postgres <span class="str">chakradb</span> &gt; <span class="path">backup_$(date +%Y%m%d).sql</span></div>
+<div class="code-block"><span class="comment"># Same as the cron job; logs to ~/backups-local/backup.log</span>
+~/chakra-backup/chakra-backup.sh db</div>
 </div>
 
 <div class="card gd">
-<h2>Incremental Backup</h2>
-<p style="margin-bottom:16px;">Daily incremental backups capture changed files across the codebase and website content.</p>
+<h2>File Backup</h2>
+<p style="margin-bottom:16px;">A daily sync copies the website content and nginx configs to S3.</p>
 
 <h3>How It Works</h3>
 <ol>
-  <li>Cron triggers <code>/home/root1/incremental_backup_to_aws_script.sh</code> daily at 3 AM</li>
-  <li>Script syncs changed files to S3 mount</li>
-  <li>Output suppressed (<code>&gt; /dev/null 2&gt;&amp;1</code>)</li>
+  <li>Cron runs <code>chakra-backup.sh files</code> daily at 21:30 UTC</li>
+  <li><code>aws s3 sync</code> copies <code>website/XML</code>, <code>website/HTML</code>, <code>website/JoshUsers</code>, <code>reverse_proxy_configurations</code> and <code>media_files</code> (previews excluded) under <code>files/</code></li>
+  <li>It runs at the lowest CPU and IO priority, and only uploads changed files</li>
 </ol>
-<p style="margin-top:10px;">The incremental backup covers the website content, media files, and configuration &mdash; everything needed to restore root1 from scratch.</p>
+<p style="margin-top:10px;">Together with the database dumps and config snapshots, this is everything needed to rebuild the app server from scratch.</p>
 </div>
 
 <div class="card ge">
@@ -161,25 +171,26 @@ docker exec chakra-docker_database_1 \
 
 <div class="table-wrap">
 <table>
-  <tr><th>Content</th><th>root1 Location</th><th>root2 Location</th><th>Sync Method</th></tr>
-  <tr><td>Published HTML + assets</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>lsyncd (continuous)</td></tr>
-  <tr><td>Josh user websites</td><td><code>website/JoshUsers/</code></td><td><code>new_website/Josh Users/</code></td><td>lsyncd (continuous)</td></tr>
-  <tr><td>Faculty websites</td><td>N/A (user-managed)</td><td><code>s3bucket/public/Websites/</code></td><td>S3 (both mount same bucket)</td></tr>
-  <tr><td>Source XML</td><td><code>website/XML/</code></td><td>Not present</td><td>S3 incremental only</td></tr>
-  <tr><td>Database</td><td>Docker volume</td><td>Not present</td><td>Weekly dump to S3</td></tr>
+  <tr><th>Content</th><th>AWS Location</th><th>root2 Location</th><th>Backup</th></tr>
+  <tr><td>Published HTML + assets</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>lsyncd (continuous) + daily S3</td></tr>
+  <tr><td>Josh user websites</td><td><code>website/JoshUsers/</code></td><td><code>new_website/Josh Users/</code></td><td>lsyncd (continuous) + daily S3</td></tr>
+  <tr><td>Faculty websites</td><td>N/A (user-managed)</td><td><code>s3bucket/public/Websites/</code></td><td>Stored in S3</td></tr>
+  <tr><td>Source XML</td><td><code>website/XML/</code></td><td>Not present</td><td>Daily S3</td></tr>
+  <tr><td>Database</td><td>Docker volume</td><td>Not present</td><td>Dump every 6 hours to S3</td></tr>
 </table>
 </div>
-<p style="margin-top:12px;"><strong>Recovery scenario:</strong> If root2 fails, replace it with a fresh server, configure lsyncd target, and wait for a full sync. If root1 fails, restore from S3 backups (database dump + incremental files).</p>
+<p style="margin-top:12px;"><strong>Recovery scenario:</strong> If root2 fails, set up a new server, open the reverse tunnel and let lsyncd resync. If the app server fails, restore the latest database dump, the <code>files/</code> sync and the newest config snapshot onto a new instance.</p>
+<p style="margin-top:10px;">History: when root1 failed in November 2026, the newest database copy was a January dump, and the published XML had to be reconciled with root2's live HTML. The 6-hourly dumps exist so that does not happen again.</p>
 </div>
 
 <div class="card ga">
 <h2>What's NOT Backed Up</h2>
 <ul>
-  <li><strong>Preview images</strong> (<code>media_files/preview/</code>) &mdash; ephemeral, regenerated on demand, cleaned hourly</li>
-  <li><strong>Docker volumes</strong> (except database) &mdash; static_backend volume is regenerated by <code>collectstatic</code></li>
-  <li><strong>RabbitMQ state</strong> &mdash; message queue is transient, Celery tasks are idempotent</li>
-  <li><strong>Memcached</strong> &mdash; in-memory cache, no persistence needed</li>
-  <li><strong>Web server logs</strong> &mdash; retained on root1's filesystem but not backed up to S3</li>
+  <li><strong>Preview images</strong> (<code>media_files/preview/</code>) - temporary, regenerated on every preview; excluded from the file backup</li>
+  <li><strong>Docker volumes</strong> (except the database) - the <code>static_backend</code> volume is regenerated by <code>collectstatic</code></li>
+  <li><strong>RabbitMQ state</strong> - the message queue is transient</li>
+  <li><strong>Memcached</strong> - in-memory cache, no persistence needed</li>
+  <li><strong>Web server logs</strong> - kept on the server's filesystem only</li>
 </ul>
 </div>
 

@@ -11,14 +11,12 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Frontend (Next.js)</span></div>
 
 <h1>Frontend <em>(Next.js)</em></h1>
-<p class="page-subtitle">Next.js editor UI &mdash; visual page composition from UI-kit components</p>
-
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<p class="page-subtitle">Next.js editor UI on the AWS app server - visual page composition from UI-kit components</p>
 
 <!-- ══════════ OVERVIEW ══════════ -->
 <div class="card ga">
 <h2>Container Overview</h2>
-<p style="margin-bottom:16px;">The frontend runs in a Docker container using the <code>chakra-frontend:latest</code> image. It serves the editor interface on port 3000, proxied by nginx on root1.</p>
+<p style="margin-bottom:16px;">The frontend runs in the <code>chakra-docker_chakra_frontend_1</code> container (image <code>chakra-frontend:latest</code>, Next.js 12, <code>network_mode: host</code>). It serves the editor on port 3000 behind the host nginx at chakra.channeli.in. The checkout is <code>~/chakra-docker/codebase/chakra-frontend</code>; Jenkins pulls it and restarts the container when <code>master</code> changes.</p>
 
 <h3>Startup Command</h3>
 <div class="code-block"><span class="fn">bash</span> /start.sh</div>
@@ -30,8 +28,10 @@
     <ul>
       <li><strong>Port:</strong> 3000</li>
       <li><strong>Process manager:</strong> PM2</li>
-      <li><strong>Proxy:</strong> Nginx on root1 forwards <code>/*</code> fallback to :3000</li>
-      <li><strong>PROXY env var:</strong> <code>chakra.channeli.in</code></li>
+      <li><strong>Node:</strong> the container runs 17.4; CI pins 17.9 through <code>.nvmrc</code></li>
+      <li><strong>Proxy:</strong> host nginx forwards <code>/</code> and <code>/api/</code> to :3000</li>
+      <li><strong>PROXY env var:</strong> <code>127.0.0.1:8000</code> (set in the server's <code>docker-compose.override.yml</code>)</li>
+      <li><strong>OAuth:</strong> <code>NEXT_PUBLIC_*</code> values in the locked <code>.env.local</code> point login at channeli.in with the chakra.channeli.in redirect</li>
     </ul>
   </div>
   <div>
@@ -45,15 +45,15 @@
 <!-- ══════════ WHAT IT DOES ══════════ -->
 <div class="card gb">
 <h2>What It Does</h2>
-<p style="margin-bottom:16px;">The frontend is a <strong>visual editor</strong> for composing pages from pre-built UI-kit components. Editors drag and arrange components, and the frontend generates XML from these component trees.</p>
+<p style="margin-bottom:16px;">The frontend is a <strong>visual editor</strong> for composing pages from pre-built UI-kit components. Editors arrange components, and the frontend sends the component tree to the backend, which stores it as XML.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Page</th><th>Purpose</th></tr>
-  <tr><td>Editor</td><td>Visual component composer &mdash; drag, arrange, and configure UI-kit components</td></tr>
-  <tr><td>Page Management</td><td>Create, list, edit, and delete pages</td></tr>
-  <tr><td>Folder Browser</td><td>Navigate the website directory structure</td></tr>
-  <tr><td>File Upload</td><td>Upload images and assets for pages</td></tr>
+  <tr><td>Dashboard</td><td>Folder tree of the site; the first level of the editor's section opens by default</td></tr>
+  <tr><td>Editor</td><td>Visual component composer: add, arrange and configure UI-kit components</td></tr>
+  <tr><td>Preview</td><td>Rendered draft at laptop, tablet (768x1024) and phone (390x844) sizes</td></tr>
+  <tr><td>Manage</td><td>Page maintainers, short URLs, edit log, file uploads</td></tr>
   <tr><td>Permissions</td><td>Manage user access and roles</td></tr>
 </table>
 </div>
@@ -62,7 +62,7 @@
 <!-- ══════════ BACKEND INTEGRATION ══════════ -->
 <div class="card gc">
 <h2>Backend Integration</h2>
-<p style="margin-bottom:16px;">The frontend communicates with the Django backend using <strong>axios</strong> with credentials enabled for all API calls. Key integration points:</p>
+<p style="margin-bottom:16px;">The frontend calls the backend with <strong>axios</strong> on relative <code>/api/...</code> URLs. Key integration points:</p>
 
 <div class="g2">
   <div>
@@ -72,8 +72,8 @@
   </div>
   <div>
     <h3>Preview</h3>
-    <div class="code-block"><span class="kw">GET</span> <span class="path">/api/generator/preview/</span><span class="str">?xml_page_pk={id}</span></div>
-    <p>Requests a rendered HTML preview of the current page. Django calls the transpiler, which returns HTML with absolute asset URLs for display in the browser.</p>
+    <div class="code-block"><span class="kw">GET</span> <span class="path">/api/generator/preview</span><span class="str">?xml_page_pk={id}</span></div>
+    <p>Django renders the draft through the transpiler and returns HTML. Its images point at <code>https://chakra.channeli.in/media/preview/...</code> (the transpiler's <code>assets_host</code>; see <a href="image-lifecycle.html">Image Lifecycle</a>).</p>
   </div>
 </div>
 </div>
@@ -81,25 +81,26 @@
 <!-- ══════════ API CLIENT ══════════ -->
 <div class="card gd">
 <h2>API Client</h2>
-<p style="margin-bottom:16px;">All backend requests go through a centralized axios instance configured with credentials and the correct base URL.</p>
+<p style="margin-bottom:16px;">Most requests go through one axios instance in <code>src/utils/apiClient.js</code>. It sends cookies and adds the CSRF header from the <code>chakra_csrftoken</code> cookie.</p>
 
-<div class="code-block"><span class="comment">// Axios instance configuration</span>
-<span class="kw">const</span> api = axios.<span class="fn">create</span>({
-  baseURL: <span class="str">`https://${PROXY}/api`</span>,
+<div class="code-block"><span class="comment">// src/utils/apiClient.js (trimmed)</span>
+<span class="kw">export const</span> apiClient = axios.<span class="fn">create</span>({
   withCredentials: <span class="str">true</span>,
-});</div>
-<p style="margin-top:12px;">The <code>PROXY</code> environment variable is set to <code>chakra.channeli.in</code> in production, ensuring all API calls route through the main nginx reverse proxy.</p>
+  headers: { <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+});
+<span class="comment">// request interceptor: X-CSRFToken from the chakra_csrftoken cookie</span></div>
+<p style="margin-top:12px;">URLs come from <code>urls.js</code> and start with <code>/api</code>. <code>next.config.js</code> rewrites <code>/api/:path*/</code> to <code>http://${PROXY}/:path*/</code>, so in production the Next.js server forwards API calls to Gunicorn on <code>127.0.0.1:8000</code>.</p>
 </div>
 
 <!-- ══════════ COMPONENT WORKFLOW ══════════ -->
 <div class="card ge">
 <h2>Component Workflow</h2>
-<p style="margin-bottom:16px;">The editor generates XML from the visual component tree. This XML is saved to the backend and later transpiled to HTML.</p>
+<p style="margin-bottom:16px;">The editor works on a JSON component tree. The backend converts it to XML on save, and the transpiler turns the XML into HTML.</p>
 
 <div class="g3">
   <div class="step"><div class="n">1</div><h4>Compose</h4><p>Editor arranges UI-kit components in the visual editor interface.</p></div>
-  <div class="step"><div class="n">2</div><h4>Generate XML</h4><p>Frontend serializes the component tree into XML format.</p></div>
-  <div class="step"><div class="n">3</div><h4>Save</h4><p>XML is sent to Django backend and stored in <code>website/XML/</code>.</p></div>
+  <div class="step"><div class="n">2</div><h4>Save</h4><p>The tree is sent as JSON; the backend writes it to <code>&lt;page&gt;.xml.draft</code> under <code>website/XML/</code>.</p></div>
+  <div class="step"><div class="n">3</div><h4>Publish</h4><p>The draft becomes the published XML and is rendered to <code>website/HTML/</code>, which lsyncd copies to root2.</p></div>
 </div>
 </div>
 

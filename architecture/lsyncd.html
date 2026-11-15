@@ -11,23 +11,21 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>lsyncd &amp; Sync</span></div>
 
 <h1>lsyncd &amp; <em>Sync</em></h1>
-<p class="page-subtitle">Live Syncing Daemon &mdash; continuous rsync on file changes from root1 to root2</p>
-
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<p class="page-subtitle">Live Syncing Daemon - continuous rsync from the AWS app server to root2 through a reverse SSH tunnel, as of 15 November 2026</p>
 
 <!-- ══════════ OVERVIEW ══════════ -->
 <div class="card ga">
 <h2>What is lsyncd?</h2>
-<p style="margin-bottom:16px;"><strong>lsyncd</strong> (Live Syncing Daemon) watches directories on root1 for file changes and triggers <code>rsync</code> to push those changes to root2 in near-real-time. It is the backbone of the two-server architecture &mdash; ensuring published content and nginx configs reach the static file server automatically.</p>
+<p style="margin-bottom:16px;"><strong>lsyncd</strong> (Live Syncing Daemon) watches directories on the AWS app server for file changes and triggers <code>rsync</code> to push them to root2 within seconds. It is the backbone of the two-server architecture: published content and nginx configs reach the static file server automatically.</p>
 
 <div class="g2">
   <div>
     <h3>Configuration</h3>
     <ul>
-      <li><strong>Config file:</strong> <code>/etc/lsyncd/lsyncd.conf.lua</code> on root1</li>
-      <li><strong>Mode:</strong> <code>default.rsync</code></li>
-      <li><strong>SSH key:</strong> <code>/home/root1/.ssh/website-key</code></li>
-      <li><strong>Known hosts:</strong> Specified in config for strict host checking</li>
+      <li><strong>Config file:</strong> <code>/etc/lsyncd/lsyncd.conf.lua</code> on the AWS server (drift-checked by the env guard)</li>
+      <li><strong>Service:</strong> systemd unit <code>lsyncd-chakra</code>, running as the app user</li>
+      <li><strong>Mode:</strong> <code>default.rsync</code>, <code>delay = 3</code> seconds, <code>delete = true</code> on every stream</li>
+      <li><strong>Transport:</strong> SSH through the reverse tunnel, with its own <code>/etc/lsyncd/ssh_config</code> (batch mode, pinned known hosts)</li>
     </ul>
   </div>
   <div>
@@ -35,92 +33,122 @@
     <ul>
       <li><strong>Log file:</strong> <code>/var/log/lsyncd/lsyncd.log</code></li>
       <li><strong>Status file:</strong> <code>/var/log/lsyncd/lsyncd.status</code></li>
+      <li><strong>Health metrics:</strong> <code>LsyncdUp</code> and <code>Root2TunnelUp</code> in CloudWatch, every 5 minutes</li>
     </ul>
   </div>
 </div>
 </div>
 
+<!-- ══════════ TUNNEL ══════════ -->
+<div class="card gd">
+<h2>The Reverse Tunnel</h2>
+<p style="margin-bottom:16px;">The AWS server cannot open connections into the IITR network, so the connection runs the other way. root2 starts an SSH session to the AWS server and forwards a port on the AWS loopback interface back to its own SSH port. lsyncd then connects to that loopback port as if root2 were local.</p>
+
+<div class="code-block"><span class="comment"># root2: aws-tunnel.sh, from cron at boot and every 5 minutes (flock keeps one copy)</span>
+<span class="fn">ssh</span> <span class="str">-N</span> <span class="str">-o ExitOnForwardFailure=yes -o ServerAliveInterval=30</span> \
+    <span class="str">-R</span> 127.0.0.1:2222:127.0.0.1:22 &lt;aws server&gt;
+<span class="comment"># reconnects 10 seconds after any drop, logging to aws-tunnel.log</span>
+
+<span class="comment"># AWS: /etc/lsyncd/ssh_config</span>
+Host root2
+    HostName 127.0.0.1
+    Port 2222</div>
+<p style="margin-top:12px;">If the tunnel is down, lsyncd keeps retrying (<code>insist = true</code>) and catches up once root2 reconnects. Users, keys and hostnames are in the private <code>chakra-ops</code> skill.</p>
+</div>
+
 <!-- ══════════ SYNC STREAMS ══════════ -->
 <div class="card gb">
 <h2>5 Sync Streams</h2>
-<p style="margin-bottom:16px;">lsyncd maintains 5 independent sync streams, each watching a different directory on root1 and pushing changes to a corresponding directory on root2.</p>
+<p style="margin-bottom:16px;">lsyncd maintains 5 independent sync streams, each watching a directory under <code>codebase/chakra-backend/</code> on the AWS server and pushing changes to a corresponding directory on root2.</p>
 
 <div class="table-wrap">
 <table>
-  <tr><th>#</th><th>Source (root1)</th><th>Target (root2)</th><th>What Syncs</th></tr>
-  <tr><td>1</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>Published pages + assets/ folders</td></tr>
+  <tr><th>#</th><th>Source (AWS)</th><th>Target (root2)</th><th>What Syncs</th></tr>
+  <tr><td>1</td><td><code>website/HTML/</code></td><td><code>/home/root2/new_website/</code></td><td>Published pages + assets/ folders (excludes <code>/Josh Users/</code>)</td></tr>
   <tr><td>2</td><td><code>website/JoshUsers/</code></td><td><code>/home/root2/new_website/Josh Users/</code></td><td>Josh user websites</td></tr>
   <tr><td>3</td><td><code>reverse_proxy_configurations/subdomains/</code></td><td><code>/etc/nginx/sites-available/subdomains/</code></td><td>Subdomain nginx server block configs</td></tr>
-  <tr><td>4</td><td><code>reverse_proxy_configurations/shorturls/</code></td><td><code>/etc/nginx/conf.d/includes/</code></td><td>Short URL location blocks</td></tr>
+  <tr><td>4</td><td><code>reverse_proxy_configurations/shorturls/</code></td><td><code>/etc/nginx/conf.d/includes/</code></td><td>Short URL location blocks and the hand-written includes such as <code>main-route.conf</code></td></tr>
   <tr><td>5</td><td><code>reverse_proxy_configurations/josh-subdomains/</code></td><td><code>/etc/nginx/sites-available/josh-subdomains/</code></td><td>Josh subdomain configs</td></tr>
 </table>
 </div>
+
+<h3>delete = true</h3>
+<p>Each target is a mirror of its source. A file removed on AWS is removed on root2, and a file that exists only on root2 inside a synced tree is deleted at the next sync. To add or change anything in these trees (a favicon, a nginx include), do it on the AWS side; edits made directly on root2 are lost.</p>
 </div>
 
 <!-- ══════════ WHAT DOES NOT SYNC ══════════ -->
 <div class="card gc">
 <h2>What Does NOT Sync</h2>
-<p style="margin-bottom:16px;">Not everything on root1 is pushed to root2. Several directories and resources stay on root1 only.</p>
+<p style="margin-bottom:16px;">Not everything on the AWS server is pushed to root2. Several directories and resources stay on AWS only.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Resource</th><th>Location</th><th>Why Not Synced</th></tr>
-  <tr><td><code>website/XML/</code></td><td>root1 only</td><td>Source XML is only needed for editing and transpilation, not serving</td></tr>
-  <tr><td><code>media_files/</code></td><td>root1 only</td><td>Preview images served directly from root1 via <code>chakra.channeli.in/media</code></td></tr>
-  <tr><td>PostgreSQL database</td><td>root1 Docker volume</td><td>Application database only needed by Django on root1</td></tr>
-  <tr><td>Docker volumes</td><td>root1 only</td><td>No Docker containers run on root2</td></tr>
+  <tr><td><code>website/XML/</code></td><td>AWS only</td><td>Source XML is only needed for editing and transpilation, not serving</td></tr>
+  <tr><td><code>media_files/</code></td><td>AWS only</td><td>Preview images are served by the AWS server via <code>chakra.channeli.in/media</code></td></tr>
+  <tr><td>PostgreSQL database</td><td>AWS Docker volume</td><td>Application database only needed by Django</td></tr>
+  <tr><td>Docker volumes</td><td>AWS only</td><td>No Chakra containers run on root2</td></tr>
 </table>
 </div>
-<p style="margin-top:12px;"><strong>Key insight:</strong> Only <em>published</em> HTML reaches root2. Preview images are served from root1 directly via <code>chakra.channeli.in</code>.</p>
+<p style="margin-top:12px;"><strong>Key insight:</strong> Only <em>published</em> HTML reaches root2. Preview images are served from the AWS server directly via <code>chakra.channeli.in</code>.</p>
 </div>
 
 <!-- ══════════ INOTIFYWAIT ══════════ -->
 <div class="card gd">
 <h2>Auto-Reload on root2 (inotifywait)</h2>
-<p style="margin-bottom:16px;">When lsyncd pushes new nginx configs to root2, they need to take effect without manual intervention. This is handled by <strong>inotifywait</strong>.</p>
+<p style="margin-bottom:16px;">When lsyncd pushes new nginx configs to root2, they need to take effect without manual intervention. The <code>hot-nginx-reload</code> systemd service on root2 handles this.</p>
 
-<div class="code-block"><span class="comment"># On root2: watches for nginx config changes</span>
-<span class="fn">inotifywait</span> <span class="str">--monitor</span> <span class="str">--recursive</span> <span class="path">/etc/nginx/</span>
-    <span class="kw">&rarr;</span> <span class="fn">hot-nginx-reload.sh</span>
-    <span class="kw">&rarr;</span> nginx <span class="str">-s reload</span></div>
+<div class="code-block"><span class="comment"># root2: hot-nginx-reload.sh, run by the hot-nginx-reload service</span>
+<span class="fn">inotifywait</span> <span class="str">-q -m -r</span> <span class="str">-e modify -e create -e close_write -e moved_to</span> <span class="path">/etc/nginx/</span>
+    <span class="kw">&rarr;</span> wait for the burst of changes to settle
+    <span class="kw">&rarr;</span> nginx <span class="str">-t</span>
+    <span class="kw">&rarr;</span> service nginx reload   <span class="comment"># only if the test passed</span></div>
 
-<p style="margin-top:12px;">The <code>inotifywait</code> process watches <code>/etc/nginx/</code> recursively. When any file is created, modified, or deleted, it triggers <code>hot-nginx-reload.sh</code>, which runs <code>nginx -s reload</code> to apply the new configuration without downtime.</p>
+<p style="margin-top:12px;">A config that fails <code>nginx -t</code> is not loaded; nginx keeps serving the previous configuration and the failure is logged.</p>
 </div>
 
 <!-- ══════════ CONFIG EXAMPLE ══════════ -->
 <div class="card ge">
-<h2>Configuration Example</h2>
-<p style="margin-bottom:16px;">Each sync stream in <code>lsyncd.conf.lua</code> follows this pattern:</p>
+<h2>Configuration</h2>
+<p style="margin-bottom:16px;">The live <code>lsyncd.conf.lua</code> defines one helper and calls it once per stream:</p>
 
-<div class="code-block"><span class="comment">-- /etc/lsyncd/lsyncd.conf.lua</span>
+<div class="code-block"><span class="comment">-- /etc/lsyncd/lsyncd.conf.lua (AWS)</span>
+<span class="kw">local</span> B = <span class="str">"&lt;home&gt;/chakra-docker/codebase/chakra-backend"</span>
+<span class="kw">local</span> RSYNC = {
+    rsh = <span class="str">"/usr/bin/ssh -F /etc/lsyncd/ssh_config"</span>,
+    links = true, times = true, perms = true, protect_args = true,
+}
+
 <span class="fn">settings</span> {
     logfile = <span class="str">"/var/log/lsyncd/lsyncd.log"</span>,
     statusFile = <span class="str">"/var/log/lsyncd/lsyncd.status"</span>,
+    insist = true,
 }
 
-<span class="fn">sync</span> {
-    default.rsync,
-    source = <span class="str">"/path/to/source/"</span>,
-    target = <span class="str">"root2@192.168.121.188:/path/to/target/"</span>,
-    rsync = {
-        rsh = <span class="str">"/usr/bin/ssh -i /home/root1/.ssh/website-key"</span>,
-    }
-}</div>
+<span class="kw">local function</span> <span class="fn">stream</span>(src, dst, extra)
+    <span class="fn">sync</span> { default.rsync, source = B .. src, target = <span class="str">"root2:"</span> .. dst,
+           delete = true, delay = 3, rsync = RSYNC }   <span class="comment">-- plus extra</span>
+<span class="kw">end</span>
+
+<span class="fn">stream</span>(<span class="str">"/website/HTML/"</span>, <span class="str">"/home/root2/new_website/"</span>, { exclude = { <span class="str">"/Josh Users/"</span> } })
+<span class="fn">stream</span>(<span class="str">"/website/JoshUsers/"</span>, <span class="str">"/home/root2/new_website/Josh Users/"</span>)
+<span class="comment">-- ... and the three reverse_proxy_configurations streams</span></div>
 </div>
 
 <!-- ══════════ TROUBLESHOOTING ══════════ -->
 <div class="card ga">
 <h2>Troubleshooting</h2>
-<p style="margin-bottom:16px;">When files are not reaching root2 as expected, check these common issues:</p>
+<p style="margin-bottom:16px;">When files are not reaching root2 as expected, check these on the AWS server first:</p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Check</th><th>Command / Action</th><th>What to Look For</th></tr>
+  <tr><td>lsyncd process</td><td><code>systemctl status lsyncd-chakra</code></td><td>Is the daemon running?</td></tr>
   <tr><td>lsyncd log</td><td><code>tail -f /var/log/lsyncd/lsyncd.log</code></td><td>Errors, connection failures, permission denied messages</td></tr>
-  <tr><td>SSH key permissions</td><td><code>ls -la /home/root1/.ssh/website-key</code></td><td>Should be <code>600</code> (owner read/write only)</td></tr>
-  <tr><td>Manual rsync test</td><td><code>rsync -avz -e "ssh -i /home/root1/.ssh/website-key" source/ target/</code></td><td>Verify rsync works independently of lsyncd</td></tr>
   <tr><td>lsyncd status</td><td><code>cat /var/log/lsyncd/lsyncd.status</code></td><td>Number of pending syncs, last sync timestamps</td></tr>
-  <tr><td>lsyncd process</td><td><code>systemctl status lsyncd</code></td><td>Is the daemon running?</td></tr>
+  <tr><td>Tunnel</td><td><code>ssh -F /etc/lsyncd/ssh_config root2 true</code></td><td>Fails if root2's tunnel is down; check <code>aws-tunnel.log</code> on root2</td></tr>
+  <tr><td>File on root2</td><td><code>ls -la</code> the target path on root2</td><td>Same size and time as on AWS; a file missing on AWS is deleted on root2 by design</td></tr>
+  <tr><td>Health metrics</td><td>CloudWatch <code>Chakra/Health</code></td><td><code>LsyncdUp</code>, <code>Root2TunnelUp</code></td></tr>
 </table>
 </div>
 </div>

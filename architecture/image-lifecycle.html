@@ -11,21 +11,19 @@
 <div class="breadcrumb"><a href="index.html">Home</a><span class="sep">/</span><span>Image Lifecycle</span></div>
 
 <h1>Image <em>Lifecycle</em></h1>
-<p class="page-subtitle">How images flow from upload through preview, publish, and serving &mdash; verified against production</p>
-
-<div class="card ga"><p><strong>Pre-November 2026 layout.</strong> This page describes Chakra on root1 (bifrost). root1 failed on 12 November 2026 and the AWS app server (chakra.channeli.in) replaced it: the containers, repositories and the root2 side are the same, but hosts, paths (<code>/home/ubuntu/...</code> instead of <code>/home/root1/...</code>), deploys, backups and the lsyncd transport differ. See <a href="aws-production.html">AWS production</a> for the current setup.</p></div>
+<p class="page-subtitle">How images flow from upload through preview, publish and serving - verified against production in November 2026</p>
 
 <div class="g4" style="margin-bottom:36px;">
   <div class="stat"><div class="v">6</div><div class="l">lifecycle stages</div></div>
   <div class="stat"><div class="v">3</div><div class="l">copies on publish</div></div>
   <div class="stat"><div class="v">SHA-256</div><div class="l">filename prefix</div></div>
-  <div class="stat"><div class="v">1 day</div><div class="l">preview TTL</div></div>
+  <div class="stat"><div class="v">WebP</div><div class="l">stored format for PNG/JPEG</div></div>
 </div>
 
 <!-- ══════════ UPLOAD ══════════ -->
 <div class="card ga">
 <h2>Upload</h2>
-<p style="margin-bottom:16px;">User uploads an image via the editor. The backend hashes the page PK to namespace the file, then writes it to the XML node's assets directory.</p>
+<p style="margin-bottom:16px;">An editor uploads an image in the editor. The backend converts PNG and JPEG to WebP, prefixes the name with a hash of the page's primary key, and writes it to the XML folder's <code>assets/</code> directory on the AWS app server.</p>
 
 <div class="g2" style="margin-top:20px;">
   <div>
@@ -33,10 +31,11 @@
     <div class="code-block"><span class="comment"># Endpoint</span>
 POST /api/generator/image/
 
-<span class="comment"># Filename generation (Python)</span>
+<span class="comment"># PNG/JPEG: converted to WebP (max 1920px wide, quality 82)</span>
+<span class="comment"># unless animated or conversion fails</span>
 filename = sha256(
     str(xml_page_pk).encode(<span class="str">'utf-8'</span>)
-).hexdigest() + <span class="str">"_"</span> + original_name</div>
+).hexdigest() + <span class="str">"_"</span> + stored_name</div>
   </div>
   <div>
     <h3>Result</h3>
@@ -45,10 +44,10 @@ filename = sha256(
       <tr><th>Aspect</th><th>Detail</th></tr>
       <tr><td><strong>Written to</strong></td><td><code>website/XML/{node}/assets/{filename}</code></td></tr>
       <tr><td><strong>Response</strong></td><td><code>{ value: "./assets/{filename}", key: original_name }</code></td></tr>
-      <tr><td><strong>Sync</strong></td><td>File lives ONLY on root1. <strong>Not synced</strong> to root2.</td></tr>
+      <tr><td><strong>Sync</strong></td><td>File lives ONLY on the AWS app server. <strong>Not synced</strong> to root2.</td></tr>
     </table>
     </div>
-    <p style="margin-top:10px;"><strong>Key point:</strong> The <code>website/XML/</code> directory is never synced by lsyncd. Upload artifacts exist only on the application server until publish.</p>
+    <p style="margin-top:10px;"><strong>Key point:</strong> lsyncd syncs <code>website/HTML/</code> and <code>website/JoshUsers/</code>, never <code>website/XML/</code>. Uploads stay on the app server until the page is published. Backups of <code>XML/</code> go to S3 (see <a href="backups.html">Backups</a>).</p>
   </div>
 </div>
 </div>
@@ -56,31 +55,32 @@ filename = sha256(
 <!-- ══════════ PREVIEW ══════════ -->
 <div class="card gb">
 <h2>Preview</h2>
-<p style="margin-bottom:16px;">When an editor previews a page, Django calls the Flask transpiler with <code>write_stdout=True</code> and rewrites image paths to absolute URLs so the browser can fetch them from root1.</p>
+<p style="margin-bottom:16px;">When an editor previews a page, Django calls the transpiler with <code>write_stdout=True</code>. The transpiler rewrites image paths to absolute URLs so the browser can fetch them from chakra.channeli.in.</p>
 
 <div class="g2" style="margin-top:20px;">
   <div>
     <h3>Flow</h3>
     <ol style="padding-left:18px;">
-      <li><strong>Request:</strong> <code>GET /api/generator/preview/?xml_page_pk=123</code></li>
-      <li><strong>Django &rarr; Flask:</strong> Calls transpiler on <code>localhost:5000</code> with <code>write_stdout=True</code></li>
-      <li><strong>Transpiler:</strong> <code>ImageSpec.scala</code> sets <code>replaceAssets=true</code>, replaces <code>"./assets"</code> &rarr; <code>"https://chakra.channeli.in/media/preview"</code></li>
-      <li><strong>Django:</strong> Copies matching images from <code>website/XML/{node}/assets/</code> &rarr; <code>media_files/preview/</code></li>
-      <li><strong>Response:</strong> Returns HTML with absolute preview URLs</li>
+      <li><strong>Request:</strong> <code>GET /api/generator/preview?xml_page_pk=123</code></li>
+      <li><strong>Django &rarr; Flask:</strong> calls the transpiler on <code>127.0.0.1:5000</code>, sending the draft XML (or the published XML if there is no draft)</li>
+      <li><strong>Transpiler:</strong> <code>ImageSpec.scala</code> replaces <code>"./assets"</code> with <code>assets_host</code> from <code>components.json</code>: <code>https://chakra.channeli.in/media/preview</code></li>
+      <li><strong>Django:</strong> copies the page's images from <code>website/XML/{node}/assets/</code> to <code>media_files/preview/</code></li>
+      <li><strong>Browser:</strong> loads them from <code>/media/preview/</code>, served by the host nginx</li>
     </ol>
+    <p style="margin-top:10px;"><strong>If preview images are missing:</strong> check the image host in the browser's network tab. A 410 means <code>assets_host</code> still names canvas.channeli.in; a 404 means the file was not copied into <code>media_files/preview/</code>.</p>
   </div>
   <div>
     <h3>Preview Cleanup</h3>
     <div class="table-wrap">
     <table>
       <tr><th>Mechanism</th><th>Detail</th></tr>
-      <tr><td><strong>Celery cron</strong></td><td>Runs every 60 minutes</td></tr>
-      <tr><td><strong>Action</strong></td><td>Deletes preview files older than 1 day</td></tr>
-      <tr><td><strong>Script</strong></td><td><code>tmp_clear.sh</code></td></tr>
+      <tr><td><strong>Job</strong></td><td><code>generator.cron.my_scheduled_job</code> (django-crontab, hourly)</td></tr>
+      <tr><td><strong>Action</strong></td><td>Runs <code>tmp_clear.sh</code>: deletes preview files older than 1 day</td></tr>
       <tr><td><strong>Path cleaned</strong></td><td><code>media_files/preview/</code></td></tr>
+      <tr><td><strong>Status on AWS</strong></td><td>Not running: the backend image has no cron (see <a href="backend.html">Backend</a>)</td></tr>
     </table>
     </div>
-    <p style="margin-top:10px;">Preview images are temporary. They are served directly from root1 via <code>chakra.channeli.in/media/preview</code> and never reach root2.</p>
+    <p style="margin-top:10px;">Preview images are temporary copies. They are served only by the app server and never reach root2.</p>
   </div>
 </div>
 </div>
@@ -88,17 +88,17 @@ filename = sha256(
 <!-- ══════════ PUBLISH ══════════ -->
 <div class="card ge">
 <h2>Publish</h2>
-<p style="margin-bottom:16px;">Publishing converts XML to HTML on disk and copies image assets alongside the HTML. After lsyncd syncs, the image exists in <strong>three places</strong>.</p>
+<p style="margin-bottom:16px;">Publishing converts XML to HTML on disk and copies the page's images next to the HTML. After lsyncd syncs, each image exists in <strong>three places</strong>.</p>
 
 <div class="g2" style="margin-top:20px;">
   <div>
     <h3>Publish Steps</h3>
     <ol style="padding-left:18px;">
       <li><code>XMLPage.publish()</code> in <code>generator/models/page.py</code></li>
-      <li>Calls transpiler with <code>write_stdout=False</code> &rarr; writes HTML to <code>website/HTML/{node}/</code></li>
-      <li><code>replaceAssets</code> stays <strong>false</strong> &rarr; HTML retains relative <code>"./assets"</code> paths</li>
-      <li>Django copies images: <code>website/XML/{node}/assets/</code> &rarr; <code>website/HTML/{node}/assets/</code></li>
-      <li>lsyncd detects changes &rarr; rsyncs HTML + assets to root2</li>
+      <li>Calls the transpiler with <code>write_stdout=False</code> &rarr; writes HTML to <code>website/HTML/{node}/</code></li>
+      <li>The HTML keeps relative <code>"./assets"</code> paths</li>
+      <li>Deletes this page's old images (same hash prefix) from <code>website/HTML/{node}/assets/</code>, then copies the current ones from <code>website/XML/{node}/assets/</code></li>
+      <li>lsyncd pushes HTML and assets to root2 through the reverse tunnel (<code>delete = true</code>, so removed images disappear from root2 too)</li>
     </ol>
   </div>
   <div>
@@ -106,8 +106,8 @@ filename = sha256(
     <div class="table-wrap">
     <table>
       <tr><th>#</th><th>Location</th><th>Server</th><th>Purpose</th></tr>
-      <tr><td>1</td><td><code>website/XML/{node}/assets/</code></td><td>root1</td><td>Source (for re-publish)</td></tr>
-      <tr><td>2</td><td><code>website/HTML/{node}/assets/</code></td><td>root1</td><td>Published copy</td></tr>
+      <tr><td>1</td><td><code>website/XML/{node}/assets/</code></td><td>AWS</td><td>Source (for re-publish)</td></tr>
+      <tr><td>2</td><td><code>website/HTML/{node}/assets/</code></td><td>AWS</td><td>Published copy</td></tr>
       <tr><td>3</td><td><code>/home/root2/new_website/{node}/assets/</code></td><td>root2</td><td>Serving copy</td></tr>
     </table>
     </div>
@@ -115,36 +115,37 @@ filename = sha256(
 </div>
 
 <h3>Key Code Reference</h3>
-<div class="code-block"><span class="comment"># generator/models/page.py — publish method (around line 219-237)</span>
+<div class="code-block"><span class="comment"># generator/models/page.py - XMLPage.publish()</span>
 <span class="comment"># 1. Call transpiler (write to disk)</span>
-<span class="comment"># 2. Copy assets from XML dir to HTML dir</span>
-<span class="comment"># 3. lsyncd handles sync to root2 automatically</span></div>
+<span class="comment"># 2. Replace this page's images in the HTML assets dir</span>
+<span class="comment"># 3. Index the page for search; lsyncd syncs to root2</span></div>
 </div>
 
 <!-- ══════════ SERVING ══════════ -->
 <div class="card gc">
 <h2>Serving</h2>
-<p style="margin-bottom:16px;">Public users never interact with root1. Their browser loads static HTML from root2, and images resolve via relative paths.</p>
+<p style="margin-bottom:16px;">Public users never reach the app server. Their browser loads static HTML from root2, and images resolve through relative paths.</p>
 
 <div class="g2" style="margin-top:20px;">
   <div>
     <h3>Request Flow</h3>
     <ol style="padding-left:18px;">
-      <li>User visits <code>cec.iitr.ac.in/page.html</code></li>
-      <li>root2 nginx serves from <code>/home/root2/new_website/</code></li>
+      <li>User visits <code>ece.iitr.ac.in/People/Faculty.html</code></li>
+      <li>root2 nginx serves from the subdomain's root under <code>/home/root2/new_website/</code></li>
       <li>HTML contains relative <code>./assets</code> paths</li>
-      <li>Browser resolves to same directory on root2</li>
-      <li>nginx serves the image from root2's filesystem</li>
+      <li>Browser resolves them to the same directory on root2</li>
+      <li>For PNG and JPEG, nginx serves a <code>.webp</code> sidecar when the browser accepts WebP and one exists</li>
     </ol>
   </div>
   <div>
     <h3>Why Relative Paths Work</h3>
-    <p>The published HTML file and its <code>assets/</code> folder are siblings in the same directory. When the browser encounters <code>./assets/photo.png</code> in the HTML, it resolves relative to the page URL, which maps to the same directory on root2's filesystem.</p>
+    <p>The published HTML file and its <code>assets/</code> folder are siblings in the same directory. When the browser encounters <code>./assets/photo.webp</code> in the HTML, it resolves relative to the page URL, which maps to the same directory on root2's filesystem.</p>
     <div class="code-block"><span class="comment"># Directory structure on root2</span>
-/home/root2/new_website/cec/
-  page.html          <span class="comment"># &lt;img src="./assets/photo.png"&gt;</span>
+/home/root2/new_website/Departments/&lt;dept&gt;/
+  index.html             <span class="comment"># &lt;img src="./assets/abc123_photo.webp"&gt;</span>
   assets/
-    abc123_photo.png  <span class="comment"># served by nginx</span></div>
+    abc123_photo.webp    <span class="comment"># served by nginx</span></div>
+    <p style="margin-top:10px;">Older PNG/JPEG uploads get WebP sidecars from <code>manage.py generate_webp_sidecars</code> (<code>photo.png.webp</code> next to <code>photo.png</code>).</p>
   </div>
 </div>
 </div>
@@ -172,14 +173,14 @@ GET /api/generator/image?xml_page_pk=123</div>
 <!-- ══════════ DELETION ══════════ -->
 <div class="card ga">
 <h2>Deletion</h2>
-<p style="margin-bottom:16px;">Image deletion only removes the file from the XML source. Published copies persist until the page is re-published.</p>
+<p style="margin-bottom:16px;">Deleting an image removes it from the XML source only. Published copies stay until the page is published again.</p>
 
 <div class="g2" style="margin-top:20px;">
   <div>
     <h3>Request</h3>
     <div class="code-block"><span class="comment"># Endpoint</span>
 DELETE /api/generator/image?xml_page_pk=123
-    &amp;image_name=photo.png</div>
+    &amp;image_name=photo.webp</div>
   </div>
   <div>
     <h3>What Gets Deleted</h3>
@@ -187,11 +188,11 @@ DELETE /api/generator/image?xml_page_pk=123
     <table>
       <tr><th>Location</th><th>Deleted?</th><th>Notes</th></tr>
       <tr><td><code>website/XML/{node}/assets/</code></td><td>Yes</td><td>Removed immediately</td></tr>
-      <tr><td><code>website/HTML/{node}/assets/</code></td><td>No</td><td>Persists until next publish</td></tr>
-      <tr><td><code>/home/root2/new_website/</code></td><td>No</td><td>Persists until next publish syncs</td></tr>
+      <tr><td><code>website/HTML/{node}/assets/</code></td><td>On next publish</td><td>Publish replaces all of this page's images</td></tr>
+      <tr><td><code>/home/root2/new_website/</code></td><td>On next publish</td><td>lsyncd deletes it after the HTML copy goes</td></tr>
     </table>
     </div>
-    <p style="margin-top:10px;"><strong>Caveat:</strong> If an image is deleted and the page is never re-published, the old image remains accessible on the public site indefinitely.</p>
+    <p style="margin-top:10px;"><strong>Caveat:</strong> If an image is deleted and the page is never re-published, the old image remains accessible on the public site.</p>
   </div>
 </div>
 </div>
@@ -202,10 +203,12 @@ DELETE /api/generator/image?xml_page_pk=123
 <div class="table-wrap">
 <table>
   <tr><th>File</th><th>Repo</th><th>Responsibility</th></tr>
-  <tr><td><code>generator/views/image.py</code></td><td>chakra-backend</td><td>Upload, list, delete endpoints</td></tr>
+  <tr><td><code>generator/views/image.py</code></td><td>chakra-backend</td><td>Upload (with WebP conversion), list, delete</td></tr>
+  <tr><td><code>generator/utils/images.py</code></td><td>chakra-backend</td><td>WebP conversion</td></tr>
   <tr><td><code>generator/views/preview.py</code></td><td>chakra-backend</td><td>Preview generation, image copy to media_files</td></tr>
-  <tr><td><code>generator/models/page.py</code></td><td>chakra-backend</td><td>Publish method (lines ~219&ndash;237), asset copy logic</td></tr>
-  <tr><td><code>ImageSpec.scala</code></td><td>chakra-core</td><td>Asset path rewriting (replaceAssets flag)</td></tr>
+  <tr><td><code>generator/models/page.py</code></td><td>chakra-backend</td><td><code>XMLPage.publish()</code>, asset copy logic</td></tr>
+  <tr><td><code>ImageSpec.scala</code></td><td>chakra-core</td><td>Asset path rewriting (<code>assets_host</code> vs <code>dummy_assets_host</code>)</td></tr>
+  <tr><td><code>components.json</code></td><td>chakra-core (server copy)</td><td><code>assets_host</code>, <code>chakra_base_url</code></td></tr>
 </table>
 </div>
 </div>
