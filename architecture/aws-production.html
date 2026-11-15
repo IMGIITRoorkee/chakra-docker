@@ -31,7 +31,7 @@
   <tr><td>Transpiler (chakra-core)</td><td>Flask on 127.0.0.1:5000 in tmux session <code>chakra-core</code>, started by <code>~/chakra-core-start.sh</code>; the Scala build lives in <code>target/universal</code></td><td><code>tmux kill-session -t chakra-core; tmux new-session -d -s chakra-core '~/chakra-core-start.sh; exec bash'</code></td></tr>
   <tr><td>Message broker (RabbitMQ)</td><td>Container <code>chakra-docker_message-broker_1</code>, used by Celery for short-URL config and mail tasks</td><td><code>docker restart chakra-docker_message-broker_1</code></td></tr>
   <tr><td>Postgres, memcached</td><td>Containers from <code>docker-compose.yml</code></td><td>Restart memcached to clear preview cache</td></tr>
-  <tr><td>nginx</td><td>Host nginx, site <code>/etc/nginx/sites-enabled/chakra.conf</code>: serves only chakra.channeli.in, closes the connection for any other name (canvas.channeli.in included); editor allowed only from the IITR network (<code>/etc/nginx/conf.d/includes/iitr-only.conf</code>)</td><td><code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></td></tr>
+  <tr><td>nginx</td><td>Host nginx, site <code>/etc/nginx/sites-enabled/chakra.conf</code>: serves only chakra.channeli.in, answers canvas.channeli.in with 410 Gone and closes the connection for any other name; editor allowed only from the IITR network (<code>/etc/nginx/conf.d/includes/iitr-only.conf</code>)</td><td><code>sudo nginx -t &amp;&amp; sudo systemctl reload nginx</code></td></tr>
   <tr><td>Component library</td><td>Served from cmsredesign.channeli.in (<code>chakra-library</code>, branch <code>staging</code>); CSS fixes apply to every site without republishing</td><td>-</td></tr>
 </table>
 </div>
