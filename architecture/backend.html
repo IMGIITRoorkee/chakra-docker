@@ -101,10 +101,10 @@
 <table>
   <tr><th>Schedule</th><th>Function</th><th>Purpose</th></tr>
   <tr><td>Every 60 min</td><td><code>generator.cron.my_scheduled_job</code></td><td>Runs <code>tmp_clear.sh</code> - deletes preview images older than 1 day</td></tr>
-  <tr><td>Every 720 min</td><td><code>generator.cron.notice_list_publish_cron</code></td><td>Auto-publishes notice list pages</td></tr>
+  <tr><td>Every 720 min</td><td><code>generator.cron.notice_list_publish_cron</code></td><td>Re-renders every page with a <code>NoticeList</code> from its published XML, which pulls current notices from Channeli</td></tr>
 </table>
 </div>
-<p style="margin-top:12px;"><strong>Known gap:</strong> django-crontab installs jobs into the system crontab, and the backend image has no <code>cron</code>. Neither job runs on the AWS app server, so preview images accumulate and notice lists are republished only by hand.</p>
+<p style="margin-top:12px;"><strong>Known gap:</strong> django-crontab installs jobs into the system crontab, and the backend image has no <code>cron</code>. Neither job runs on the AWS app server, so preview images accumulate and notice lists are republished only by hand. Turning the notice job on as written would also overwrite live content on pages whose published XML is older than root2 (see the 2026-11-16 change log entry on <a href="aws-production.html">AWS Production</a>).</p>
 </div>
 
 <!-- ══════════ LOGS ══════════ -->
