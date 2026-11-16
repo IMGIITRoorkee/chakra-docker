@@ -47,6 +47,16 @@
 </ul>
 </div>
 
+<!-- ══════════ CHANNELI ══════════ -->
+<div class="card gb">
+<h2>Channeli integration</h2>
+<ul>
+  <li><strong>FacApp:</strong> Channeli's server posts to <code>/generator/publish_faculty_profile/</code>, <code>/generator/keywords/</code> and <code>/confman/faculty_shorturls/</code> with a shared <code>token</code>, the faculty member's <code>employee_id</code> and Channeli's department name as <code>dept</code>. Chakra finds the department folder by name, ignoring case, then the page under its <code>Faculty</code> folder whose file name contains the employee ID. A 403 means the token differs; a 400 <code>Incorrect dept name</code> means no folder carries that department name. FacApp shows both as "Error occured in connecting to Chakra-CMS".</li>
+  <li><strong>Notice lists:</strong> a <code>NoticeList</code> component (<code>banner-name</code> = the Channeli banner) is filled in when the page is rendered: the transpiler calls <code>https://channeli.in/api/omniport_app_cms/notice_list/</code>. Notices on a live page are therefore as old as its last render. 14 English pages and 11 Hindi pages use it.</li>
+  <li><strong>Notice trigger:</strong> Channeli's <code>cms-omniport-api</code> posts to <code>integrations.cms.host</code> + <code>notice_url</code> when a department notice changes. <code>notice_url</code> still names the pre-Chakra path <code>nova/index.php?r=notice-api/publish/</code>, which Chakra does not serve (404).</li>
+</ul>
+</div>
+
 <!-- ══════════ SERVER-ONLY CONFIG ══════════ -->
 <div class="card gc">
 <h2>Server-only configuration is locked</h2>
@@ -70,6 +80,7 @@
 <h3 style="margin-top:20px;">Secrets that must agree</h3>
 <ul>
   <li><strong>Transpiler token:</strong> the backend's compose command runs <code>source chakra_backend/.env</code>, so <code>$</code> in a value is shell-expanded. The value the web workers see is what <code>chakra-core/.env</code> must hold. Compare against <code>/proc/&lt;gunicorn pid&gt;/environ</code>, not against <code>manage.py shell</code>, which reads the file unexpanded. <code>chakra-core-start.sh</code> reads its <code>.env</code> literally.</li>
+  <li><strong>FacApp token:</strong> <code>FACULTY_PROFILE_TOKEN</code> in the backend <code>.env</code> must equal <code>integrations.cms.facapp_token</code> in Channeli's <code>omniport-backend/configuration/base.yml</code>. It stays single-quoted in the <code>.env</code> so a <code>$</code> survives <code>source</code>. After changing it on Channeli, restart <code>omniport-docker_internet-server_1</code> and <code>omniport-docker_intranet-server_1</code>.</li>
   <li><strong>Broker login:</strong> <code>RABBITMQ_DEFAULT_USER</code> and <code>RABBITMQ_DEFAULT_PASS</code> in the backend <code>.env</code> must match <code>rabbitmq/message_broker.env</code>, otherwise Celery's login is refused and the worker exits.</li>
 </ul>
 </div>
@@ -124,6 +135,8 @@ git merge --ff-only origin/master</div>
   <tr><td>2026-11-15</td><td>The 17 Hindi department folders had no header setting, so republished Hindi pages fell back to the generic header. Each now points at its file under <code>Hindi/library/html/department_headers/</code>; a test render of all 1301 published pages in those folders gave a header identical to live. 154 more Hindi faculty pages republished without the Download Resume button; 112 stay held because their Channeli profile data changed since they were last published. Two Hindi faculty pages carried retired employee IDs (700092, 700128) and now use the current ones.</td></tr>
   <tr><td>2026-11-15</td><td>canvas.channeli.in answers 410 Gone with <code>X-Robots-Tag: noindex</code> so search engines drop it. Header settings added for the 17 Hindi department folders (<code>Hindi/library/html/department_headers/</code>); all 1291 renderable pages in them produce the same header as live. 154 more Hindi faculty pages republished without the Download Resume button. A further 148 faculty pages whose Channeli profiles had changed since their last publish were republished with the current profile data (backup <code>web_server_logs/channeli-refresh-backup-20261115.tgz</code>); 10 pages cannot be rebuilt because their employee IDs no longer exist in Channeli. Health check reads the rotated backup log too.</td></tr>
   <tr><td>2026-11-15</td><td>Editor preview images were requested from canvas.channeli.in, which now answers 410: the transpiler's LibraryConfig (<code>assets_host</code>, <code>chakra_base_url</code> in core <code>components.json</code> and its locked copy <code>~/chakra-core-libraryconfig.json</code>) still named it. Both now use chakra.channeli.in. A page save that failed used to leave a draft row pointing at a file that was never written (page 3272 then opened empty); saves now roll back, and empty links no longer fail validation. iitr.ac.in serves a <code>favicon.ico</code> made from the IITR emblem, placed in <code>/website/HTML/</code> so lsyncd keeps it on root2; the same file sits in the root folder of every department, centre and Josh subdomain that had none (55 folders, under <code>HTML/</code> and <code>JoshUsers/</code>), so all 67 iitr.ac.in hosts answer <code>/favicon.ico</code> with 200.</td></tr>
+  <tr><td>2026-11-16</td><td>The editor's image picker listed only images named with the page's current ID, so 464 pages renumbered in the database rebuild showed missing images and 425 showed no picker at all; it now lists every image the page references, and converting a page to Hindi copies them too. FacApp preview and publish failed for every faculty member: Chakra's <code>FACULTY_PROFILE_TOKEN</code> held an unquoted <code>$</code>, which <code>source</code> cut short, and Channeli was sending a placeholder token. Both sides now hold a new random token. Department names from Channeli are matched ignoring case (Channeli says "Centre for Sustainable Energy", the folder is "Centre For Sustainable Energy").</td></tr>
+  <tr><td>2026-11-16</td><td>Scheduled jobs have never run on AWS: <code>CRONJOBS</code> (django-crontab) needs a cron daemon and the backend container has none, so notice lists refresh only when a page is published by hand and old preview copies are never cleaned up. A dry run of the notice job against root2 (scripts and renders in <code>web_server_logs/notice-dryrun*/</code>): 6 pages change only their notices, 2 also get broken characters fixed, 5 would lose content that is live but missing from their published XML (2517, 3104, 3228, 5750, 6342), and the never-published test page 6556 would be created. The job stays off until those pages' XML matches live.</td></tr>
 </table>
 </div>
 </div>
