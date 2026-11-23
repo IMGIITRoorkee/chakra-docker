@@ -1,0 +1,50 @@
+name: Ops Quality Gate
+
+on:
+  pull_request:
+    paths: ['ops/**', '.github/workflows/ops-quality.yml']
+  push:
+    branches: [master]
+    paths: ['ops/**', '.github/workflows/ops-quality.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax
+        run: |
+          for f in $(git ls-files 'ops/*.sh'); do
+            bash -n "$f" || { echo "::error file=$f::bash syntax error"; exit 1; }
+          done
+
+      - name: Shellcheck
+        run: shellcheck -x $(git ls-files 'ops/*.sh')
+
+  tests:
+    name: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shared helpers
+        run: bash ops/tests/run.sh
+
+  dry-run:
+    name: dry-run ${{ matrix.role }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        role: [app-server, replica, web-server, jump-host, staging]
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh ${{ matrix.role }} --dry-run
+        env:
+          CHAKRA_OPS_ENV: ops/ops.env.example
+        run: ops/install.sh ${{ matrix.role }} --dry-run

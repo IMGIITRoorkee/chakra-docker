@@ -1,0 +1,8 @@
+/home/ubuntu/chakra-health/health.log /var/log/replica-nginx-apply.log {
+    daily
+    rotate 14
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

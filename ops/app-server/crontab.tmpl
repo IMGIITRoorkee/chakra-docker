@@ -1,0 +1,3 @@
+15 */6 * * * ${HOME}/chakra-backup/chakra-backup.sh db >/dev/null 2>&1
+30 21 * * * ${HOME}/chakra-backup/chakra-backup.sh files >/dev/null 2>&1
+*/5 * * * * ${HOME}/chakra-backup/chakra-health.sh >/dev/null 2>&1

@@ -1,0 +1,29 @@
+# Chakra application logs; copytruncate because gunicorn, daphne and lsyncd keep their files open.
+/home/ubuntu/chakra-docker/codebase/chakra-backend/web_server_logs/*.log
+/home/ubuntu/chakra-docker/codebase/chakra-backend/web_server_logs/*/*.log
+/home/ubuntu/backups-local/backup.log
+/home/ubuntu/backups-local/health.log
+{
+    su ubuntu ubuntu
+    daily
+    maxsize 200M
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
+
+/var/log/lsyncd/lsyncd.log
+{
+    su ubuntu ubuntu
+    daily
+    maxsize 200M
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}
