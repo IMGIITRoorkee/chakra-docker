@@ -17,5 +17,5 @@ else
   echo "Sources unchanged since the last build, skipping yarn build"
 fi
 
-pm2 start yarn --name nextjs --interpreter bash -- start
+pm2 start yarn --name nextjs --interpreter bash -- start -H 127.0.0.1
 pm2 monit

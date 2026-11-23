@@ -129,6 +129,7 @@ bash ./scripts/build/rabbitmq.sh
 bash ./scripts/build/memcached.sh
 bash ./scripts/build/django.sh
 bash ./scripts/build/next.sh
+bash ./scripts/build/core.sh   # optional, see below
 ```
 
 ### 4) Start the stack
@@ -141,6 +142,14 @@ This repo provides a convenience script that:
 ```bash
 ./scripts/prod.sh
 ```
+
+To run `chakra-core` as a container instead of in tmux, build it with `scripts/build/core.sh` and start the compose profile:
+
+```bash
+docker compose --profile core up -d chakra-core
+```
+
+Without the profile the compose file behaves as before.
 
 For core-only development (starts just Postgres + `chakra-core`):
 
