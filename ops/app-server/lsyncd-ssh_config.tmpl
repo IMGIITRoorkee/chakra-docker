@@ -1,0 +1,20 @@
+# The lsyncd targets, both reached through reverse tunnels that end on this host.
+Host root2
+    HostName 127.0.0.1
+    Port ${ROOT2_TUNNEL_PORT}
+    User root2
+    IdentityFile ${LSYNCD_ROOT2_KEY}
+    IdentitiesOnly yes
+    UserKnownHostsFile ${HOME}/.ssh/known_hosts
+    BatchMode yes
+    ServerAliveInterval 30
+
+Host replica
+    HostName 127.0.0.1
+    Port ${REPLICA_TUNNEL_PORT}
+    User root2
+    IdentityFile ${LSYNCD_REPLICA_KEY}
+    IdentitiesOnly yes
+    UserKnownHostsFile ${HOME}/.ssh/known_hosts
+    BatchMode yes
+    ServerAliveInterval 30

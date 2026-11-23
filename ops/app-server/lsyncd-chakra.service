@@ -1,0 +1,12 @@
+[Unit]
+Description=lsyncd: push Chakra published content and nginx configs to root2 and its replica
+After=network-online.target
+
+[Service]
+User=ubuntu
+ExecStart=/usr/bin/lsyncd -nodaemon /etc/lsyncd/lsyncd.conf.lua
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
