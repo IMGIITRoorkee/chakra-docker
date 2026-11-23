@@ -4,12 +4,12 @@ services:
 
     restart: always
     healthcheck:
-      test: ['CMD', 'checkhealth']
+      test: ['CMD-SHELL', 'pg_isready -q -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
       retries: 4
 
-      interval: 16m
-      timeout: 16s
-      start_period: 2m
+      interval: 30s
+      timeout: 5s
+      start_period: 1m
 
     expose:
     - 5432
@@ -178,12 +178,12 @@ services:
 
     # Check the health of the container periodically
     healthcheck:
-      test: ['CMD', 'checkhealth']
+      test: ['CMD-SHELL', 'rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms']
       retries: 4
 
-      interval: 16m
-      timeout: 16s
-      start_period: 2m
+      interval: 30s
+      timeout: 15s
+      start_period: 1m
 
     # No matter what, if the container stops, start it again
     restart: always
@@ -215,6 +215,41 @@ services:
     # Connect to the custom default network
     network_mode: host
 
+  # The transpiler wrapper (Python 3.6 + Java 11). Optional: start it with
+  # `docker compose --profile core up -d` instead of running it in tmux.
+  chakra-core:
+    profiles:
+    - core
+    image: chakra-core:latest
+    restart: always
+    user: ${CURRENT_UID:-1000:1000}
+
+    # .env holds absolute paths into codebase/, so mount it at the same path
+    working_dir: ${PWD}/codebase/chakra-core
+    command: bash /start.sh
+    volumes:
+    - type: bind
+      source: ./codebase
+      target: ${PWD}/codebase
+      read_only: false
+
+    - type: bind
+      source: ./core/start.sh
+      target: /start.sh
+      read_only: true
+
+    healthcheck:
+      test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:5000/health/ready", timeout=5)']
+      retries: 4
+
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+
+    depends_on:
+    - cache
+
+    network_mode: host
 
 volumes:
   # This volume contains the database and PostgreSQL configuration files

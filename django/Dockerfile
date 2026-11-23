@@ -1,9 +1,12 @@
-FROM python:3.8-slim-bullseye
+FROM python:3.8.12-slim-bullseye
 
 LABEL maintainer="IMG, IIT Roorkee <https://img.channeli.in>"
 
 # Create a non-root user
 RUN groupadd --system django && useradd --system --gid django django
+
+# Debian 11 is end of life; its package indexes live on archive.debian.org
+RUN sed -i -E 's#https?://(deb|security)\.debian\.org#http://archive.debian.org#; /bullseye-updates/d' /etc/apt/sources.list
 
 # Install dependencies
 RUN apt-get update \
