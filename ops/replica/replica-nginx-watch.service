@@ -1,0 +1,9 @@
+[Unit]
+Description=Apply root2 nginx config pushed to this replica
+After=nginx.service
+[Service]
+ExecStart=/usr/local/sbin/replica-nginx-watch.sh
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
